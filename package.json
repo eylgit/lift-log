@@ -12,6 +12,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
+    "simulate": "vitest run tests/simulation.test.ts",
     "test:watch": "vitest",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"

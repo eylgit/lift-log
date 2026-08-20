@@ -379,10 +379,11 @@ never really lifted.
 
 ### Exit criteria — Part B
 
-- [x] `npm test` passes, including the property tests. *(The simulation is B7.3, outstanding.)*
+- [x] `npm test` passes, including the property tests and the simulation.
 - [x] Nothing under `src/engine/` imports React, Dexie, or touches `window`/`document`.
 - [ ] A reader can follow `progression.ts` end to end in ten minutes.
-- [ ] The simulation output produces a recognisable sawtooth.
+- [x] The simulation output produces a recognisable sawtooth. *(`output/simulation.svg`, regenerated
+      by every test run. Eight to eleven teeth per lift over the year, each taller than the last.)*
 
 ---
 
