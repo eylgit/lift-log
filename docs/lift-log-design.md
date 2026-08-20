@@ -40,7 +40,8 @@ weight. Stuck for several sessions → **deload** to a weight from 3–6 weeks a
 again; you come back through the old number and past it.
 
 **Increment:** about **2.5 kg**, or **1.25 kg for the shoulder press**. If your plates can't
-make that jump, skip increments so the *average* stays near 2.5 kg per session.
+make that jump, the jump you can make is the increment you get — buy lighter plates if that
+matters to you. See §6.1.
 
 **Two hard rules:** never train by feel — the log decides the weight. Never train to failure —
 every set ends with 1–2 reps in the tank.
@@ -207,46 +208,57 @@ watch apps · Apple Health · localisation.
 
 Roughly 300 lines, and effectively the entire product. Build it before any UI.
 
-### 6.1 The problem discrete plates create
-The method wants +2.5 kg per session. Your plates might only make 5 kg jumps. Rounding up
-progresses you twice as fast as intended; rounding down never progresses you at all.
+### 6.1 One number: the step
 
-### 6.2 The fix: a virtual target, clamped to reality
+The athlete sets a **step** — the smallest jump their equipment can make. That same number is
+the progression increment. A clean session adds one step:
 
-Two numbers per exercise:
-- **`target`** — a real number. The ideal cumulative load. Rises by the full increment after
-  every clean session, regardless of what your plates can do.
-- **`prescribed`** — the heaviest weight your equipment can actually build that is ≤ `target`.
+```
+next weight = last weight + step
+```
 
-Rungs at 20, 25, 30, 35, 40 kg; increment 2.5 kg:
+There is no second, ideal increment sitting behind it.
 
-| Session | target | prescribed | what you experience |
-|--------:|-------:|-----------:|---------------------|
-| 1 | 20.0 | 20 | |
-| 2 | 22.5 | 20 | same weight again |
-| 3 | 25.0 | 25 | +5 kg |
-| 4 | 27.5 | 25 | same weight again |
-| 5 | 30.0 | 30 | +5 kg |
+An earlier draft kept the two apart. The method asks for +2.5 kg a session, so if your plates
+only make 5 kg jumps, the app would track an exact **virtual target** rising by 2.5 and show
+the heaviest loadable weight at or below it — 20, 20, 25, 25, 30 — averaging exactly 2.5 a
+session. Rounding up would progress you twice as fast as intended; rounding down would never
+move you at all; the virtual target does neither.
 
-Average: exactly 2.5 kg per session. The user never sees the arithmetic, never gets a
-suggestion they can't load, never decides anything. Buying 1.25 kg micro-plates then pays off
-immediately, with no code change.
+It is a good idea and it buys exactly one thing: progressing in increments smaller than your
+lightest plate. It costs a weight ladder, a stored number that disagrees with the number on the
+screen, and sessions where the app says *same again* for a reason the athlete cannot see. A pair
+of 1.25 kg micro-plates buys the same thing for the price of a coffee, and then the app
+progresses at exactly the rate it displays.
+
+So the cost is accepted and stated plainly: **you cannot progress in steps smaller than your
+lightest plate.** Buy lighter plates.
+
+### 6.2 Where rounding still happens
+
+Two paths can land between steps, and both snap **down** to a multiple of the step:
+
+- the deload fallback, `× 0.85`, when the log is too short to answer honestly (§6.3);
+- a start weight typed in by hand at onboarding.
+
+Everything else moves in whole steps by construction. `snapToStep` is a few lines of arithmetic
+in `engine/weights.ts` — not a data structure, and nothing downstream has to know it exists.
 
 ### 6.3 The rules
 
 | Outcome of a session | Engine's response |
 |---|---|
-| All 3 sets clean on both sides | `target += increment`; `stall = 0` |
-| Any set short of 5 reps | `target` unchanged; `stall += 1` |
-| `stall` reaches 3 (fixed) | Propose deload → on accept, `target =` the target from **6 sessions of this exercise ago**; `stall = 0` |
-| User overrides the weight by hand | Record it as a fact; `target =` what they actually used |
+| All 3 sets clean on both sides | `weight += step`; `stall = 0` |
+| Any set short of 5 reps | `weight` unchanged; `stall += 1` |
+| `stall` reaches 3 (fixed) | Propose deload → on accept, `weight =` the weight used **6 sessions of this exercise ago**; `stall = 0` |
+| User overrides the weight by hand | Record it as a fact; `weight =` what they actually used |
 
 The deload rule *reads the log* rather than doing arithmetic — "go back four weeks" resolves to
 a weight you actually used, which is what the method prescribes and is more honest than a
 percentage. Count it in **sessions of that exercise, not calendar days**: after a two-week break,
 28 calendar days back might be only two sessions, which makes the deload far too shallow. Six
 sessions is roughly four weeks when you are consistent, and still correct when you are not. Fall
-back to `target × 0.85` when there is less history than that.
+back to `weight × 0.85`, snapped down to a step, when there is less history than that.
 
 Each exercise comes round every five days, so three consecutive stalls is about a fortnight
 of being stuck — the right amount of patience.
@@ -256,26 +268,22 @@ Set order: weak → strong → weak → strong → weak → strong. If the weak 
 strong side doesn't, **the session counts as incomplete.** Correcting that imbalance is the
 whole reason for training unilaterally.
 
-### 6.5 Weight ladders
-Everything downstream consumes a **ladder**: a sorted list of achievable weights. Where it
-comes from depends on equipment:
+### 6.5 What the equipment contributes
 
-- **Simple (v1 default):** `min` and `step` → `min, min+step, min+2·step, …`. Two numbers.
-- **Adjustable dumbbell:** `min`, `max`, `step`.
-- **Fixed dumbbells:** an explicit list.
-- **Loadable bar (v2):** `B + 2C + 2 × (any sub-multiset sum of your one-side plates)` — a
-  bounded subset-sum. Inventories are tiny (≈8 masses, ≤6 pairs), so one dynamic-programming
-  pass builds the whole ladder instantly. Cache it, and store one canonical plate combination
-  per rung so you can render "per side: 10 + 2.5" with a picture.
+One number: `stepKg`. The weights that exist are its multiples — 2.5 gives 2.5, 5, 7.5, 10, and
+so on — anchored at zero so that every familiar number stays on the grid.
 
-Same interface either way, so nothing downstream cares which kind of equipment you own.
+Plate inventories, adjustable-dumbbell ranges, fixed-dumbbell lists and machine stacks were all
+considered and dropped. They are a settings screen that answers a question the engine no longer
+asks. One number describes a rack, an adjustable dumbbell and a loaded bar equally well.
 
 ### 6.6 Edge cases that must be handled
-- Target below the lightest rung → prescribe the lightest, don't error.
+- A weight below one step, from a hand-typed start or a deload off a very light bar →
+  prescribe one step, don't error.
 - Empty history → prescribe the onboarding start weight.
-- Session abandoned halfway → mark abandoned, count incomplete, don't advance the target.
-- Pounds: store kg internally, convert only for display, and give lb users lb-native
-  increments (5 lb / 2.5 lb) rather than the ugly conversion of 2.5 kg.
+- Session abandoned halfway → mark abandoned, count incomplete, don't advance the weight.
+- Pounds: store kg internally, convert only for display, and let lb users set an lb-native
+  step (5 lb / 2.5 lb) rather than the ugly conversion of 2.5 kg.
 - "What day is it": local date with a 3 a.m. cutoff, so a midnight session counts for the day
   it felt like. Never derive the training day from UTC.
 - Two-dumbbell variants: track load *per hand*, display the total. A per-exercise flag.
@@ -288,15 +296,15 @@ Three stores. In the browser these are IndexedDB tables (§9.1); in the native a
 SQLite tables. Same shape, same code above them.
 
 ```
-exercise      id, name, pattern, incrementKg, videoQuery
-equipment     kind, minKg, stepKg, maxKg, platesJson
+exercise      id, name, pattern, videoQuery
+equipment     stepKg
 settings      units, restTargetS, stallThreshold, lastExportedAt, schemaVersion
 
 session       id, exerciseId, startedAt, finishedAt, trainingDay,
               prescribedKg, actualKg, status, note
 setLog        id, sessionId, ordinal, side, targetReps, doneReps, loggedAt
 
-engineState   exerciseId, targetKg, stallCount, weakSide     ← CACHE ONLY
+engineState   exerciseId, currentKg, stallCount, weakSide    ← CACHE ONLY
 ```
 
 `session` and `setLog` are append-only and are the truth. `engineState` is a derived cache
@@ -525,14 +533,13 @@ start.
 
 Tests go where the logic is. UI tests stay thin on purpose.
 
-**Unit** — every rule in §6.3, every edge case in §6.6, every ladder kind.
+**Unit** — every rule in §6.3 and every edge case in §6.6, across a range of step sizes.
 
 **Property-based** (fast-check) — the ones worth showing off:
-- For any equipment config, `prescribe(target)` is always in the ladder and always ≤ target,
-  unless target is below the minimum.
-- `target` is monotonically non-decreasing except immediately after a deload.
-- Over N clean sessions, `(final − initial) / N` converges on the increment.
-- Every rung's plate combination actually sums to that rung.
+- For any step size, every weight the engine prescribes is a whole multiple of the step.
+- The weight is monotonically non-decreasing except immediately after a deload.
+- Over N clean sessions, `final − initial` is exactly `N × step` — no floating-point drift.
+- `snapToStep(w) ≤ w`, and never returns less than one step.
 
 **Simulation** — model a virtual lifter whose capacity grows on a fixed curve, run 365
 simulated days through the real engine, assert that deloads fire, each cycle's peak exceeds
@@ -568,10 +575,10 @@ finish — and "I've trained with this for eight months, here's my curve" beats 
 | Milestone | What lands | Effort |
 |---|---|---|
 | **M0** Skeleton | Vite + TS + PWA manifest + service worker, deployed to Pages, **installed on your own phone's home screen day one** | an evening |
-| **M1** Engine | Types, ladder, progression, deload, full test suite. No UI at all. | a weekend |
+| **M1** Engine | Types, progression, deload, full test suite. No UI at all. | a weekend |
 | **M2** Session runner | Today card, set logging, Dexie persistence, **and the export button** — then start training on it | a weekend |
 | **M3** History | Calendar heat map, session detail, the sawtooth chart | a weekend |
-| **M4** Equipment | Ladder settings, kg/lb, manual override | a few evenings |
+| **M4** Equipment | Step size, kg/lb, manual override | a few evenings |
 | **M5** Durability | `persist()`, install nudge, storage status, backup reminder, import + round-trip test | a weekend |
 | **M6** Ship | README + GIF, ADRs, licence, v1.0 tag | a weekend |
 | **M7** *(later)* Sync | The 150-line backup endpoint from §9.3 level 4 | a weekend |
@@ -609,9 +616,9 @@ from the UTC date — you will get a bug that only appears for people who train 
 travel, and it will be confusing.
 
 **14.6 The equipment screen is where onboarding goes to die.** Plate inventory is the most
-complex UI in the app and it's the *first* thing a new user meets. **For v1, ask two numbers:
-the lightest weight you can load, and the smallest jump you can make.** That's a complete,
-correct ladder (§6.5) and it's two text fields. Plate pictures are a v2 luxury.
+complex UI in the app and it's the *first* thing a new user meets. **For v1, ask one number:
+the smallest jump you can make.** That's one field, and it is everything the engine needs
+(§6.5). Plate pictures are a v2 luxury.
 
 **14.7 You are one user, and you'll build for imaginary ones.** Every setting you add is a
 decision you've handed back to the user — which is precisely the thing the app exists to

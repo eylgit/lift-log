@@ -219,7 +219,7 @@ part; build it before any UI.
 
 ## B1 — Set up the engine module and its test runner
 
-- **B1.1** Create `src/engine/` with `types.ts`, `ladder.ts`, `progression.ts`, `stats.ts`,
+- **B1.1** Create `src/engine/` with `types.ts`, `weights.ts`, `progression.ts`, `stats.ts`,
   `index.ts`.
 - **B1.2** Add Vitest and fast-check as dev dependencies; add `"test": "vitest run"` and
   `"test:watch": "vitest"` scripts.
@@ -229,61 +229,70 @@ part; build it before any UI.
 
 ## B2 — Types and the data model
 
-- **B2.1** Define `Exercise` — id, name, movement pattern, `incrementKg`, `videoQuery`.
+- **B2.1** Define `Exercise` — id, name, movement pattern, `videoQuery`. No per-exercise
+  increment: the step is the increment (B3).
 - **B2.2** Define `Equipment` as `{ stepKg }` — one number, the smallest jump the athlete can
   make. `DEFAULT_STEP_KG` is 1.
   - **B2.2.1** Not a union over dumbbell types. A rack, an adjustable dumbbell and a loaded bar are
     all described well enough by their step for the only question the engine asks: which weights
     exist? A plate inventory is a settings screen that buys nothing (G1.1, G3.2).
-  - **B2.2.2** The ladder is anchored at **zero**, not at a separate lightest weight. A minimum that
-    is not itself a multiple of the step puts every familiar number off the grid — 1 kg minimum with
-    a 2.5 kg step gives 1, 3.5, 6, 8.5 and never 17.5. Anchoring at zero stays on-grid at any step,
-    and makes the lightest rung one step.
+  - **B2.2.2** The reachable weights are the **multiples of the step**, anchored at zero rather than
+    at a separate lightest weight. A minimum that is not itself a multiple of the step puts every
+    familiar number off the grid — 1 kg minimum with a 2.5 kg step gives 1, 3.5, 6, 8.5 and never
+    17.5. Anchoring at zero stays on-grid at any step, and makes the lightest weight one step.
 - **B2.3** Define `SetLog` — `{ id, sessionId, ordinal, side, targetReps, doneReps, loggedAt }`.
   `doneReps` is a **number** (INV-4).
 - **B2.4** Define `Session` — `{ id, exerciseId, startedAt, finishedAt, trainingDay, prescribedKg,
   actualKg, status, note, deletedAt }`. `status` ∈ `planned | complete | abandoned`.
   `deletedAt` is the tombstone (INV-3).
 - **B2.5** Define `Prescription` — `{ exercise, weightKg, repsPerSide, sets, restMinutes, weakSide }`.
-- **B2.6** Define `EngineState` — `{ exerciseId, targetKg, stallCount, weakSide }`. Document in a
-  comment that this is a **derived cache** and can always be rebuilt (INV-2).
+- **B2.6** Define `EngineState` — `{ exerciseId, currentKg, stallCount, weakSide }`. `currentKg` is
+  the weight to prescribe next, always a whole multiple of the step. Document in a comment that this
+  is a **derived cache** and can always be rebuilt (INV-2).
 
-## B3 — The weight ladder
+## B3 — The step is the increment
 
-- **B3.1** Implement `buildLadder(equipment): number[]` returning a sorted ascending list of
-  achievable weights: `step, 2·step, 3·step, …` up to a sane ceiling.
-  - **B3.1.1** Floating point is the whole difficulty here. `0.1 + 0.2 !== 0.3`, and a step of 2.5
-    accumulated by repeated addition drifts. Compute each rung as `n · step` and round to a fixed
-    number of decimals rather than adding repeatedly, so 17.5 is exactly 17.5 and compares equal.
-  - **B3.1.2** Reject a `stepKg` that is zero, negative or not finite. A bad step is the one input
-    that can hang the ladder.
-- **B3.2** Implement `snapDown(ladder, targetKg): number` — the largest rung at or below the target,
-  or the smallest rung if the target is below the whole ladder. Never throw.
+The engine has **one** weight number per exercise, and it moves in whole steps. There is no
+separate "ideal" increment and no ladder to snap to. See `lift-log-design.md` §6.1 for the
+version that was considered and rejected, and what rejecting it costs.
+
+- **B3.1** In `weights.ts`, implement `roundKg(kg): number` — round to two decimals. Floating point
+  is the whole difficulty in this file: `0.1 + 0.2 !== 0.3`, and a 2.5 kg step accumulated by
+  repeated addition drifts until 17.5 stops comparing equal to 17.5. Every weight the engine
+  returns goes through this.
+- **B3.2** Implement `snapToStep(kg, stepKg): number` — the largest multiple of the step at or
+  below `kg`, and never less than one step. Used in exactly two places, both of which can land
+  between steps: the deload fallback (B5.4) and a hand-typed start weight (G1.2). Never throws.
+- **B3.3** Reject a `stepKg` that is zero, negative, or not finite, in both functions. A bad step
+  is the one input that can produce nonsense or hang a loop.
 
 ## B4 — The prescription
 
-- **B4.1** Implement `prescribe(state, equipment): number` as `snapDown(ladder, state.targetKg)`.
-- **B4.2** Document the virtual-target mechanism in a comment: `targetKg` is a real number that
-  rises by the full increment on every clean session regardless of what the plates can do; the
-  prescription is the reality-clamped view of it. This is what keeps the *average* rate correct
-  when the plates are coarser than the increment.
+- **B4.1** Implement `nextWeight(state, equipment): number` as `roundKg(state.currentKg + stepKg)`
+  for a clean session, and `state.currentKg` unchanged otherwise. That is the whole progression
+  rule; B5 decides which case applies.
+- **B4.2** Implement `prescribe(state, exercise): Prescription` — the weight plus the hardcoded
+  session shape (5 reps, 3 sets, 5 minutes) and the weak side. The prescribed weight is always
+  already on the grid, so it needs no snapping.
 
 ## B5 — Session outcome rules
 
 Implement `applyOutcome(state, session, sets, history): EngineState`.
 
-- **B5.1** **All sets clean on both sides** → `targetKg += exercise.incrementKg`; `stallCount = 0`.
+- **B5.1** **All sets clean on both sides** → `currentKg += equipment.stepKg`; `stallCount = 0`.
   Clean means every `doneReps === targetReps`. **Binary, no tolerance.**
-- **B5.2** **Any set short** → `targetKg` unchanged; `stallCount += 1`.
+- **B5.2** **Any set short** → `currentKg` unchanged; `stallCount += 1`.
 - **B5.3** **`stallCount` reaches 3** (fixed, not a setting) → return a deload *proposal*, not a
   mutation. The UI asks; the engine never deloads silently.
-- **B5.4** **Deload accepted** → `targetKg` = the prescribed weight from **6 sessions of that
-  exercise ago**, counted in sessions and not calendar days. Fall back to `targetKg × 0.85` when
-  there is less history. `stallCount = 0`.
+- **B5.4** **Deload accepted** → `currentKg` = the prescribed weight from **6 sessions of that
+  exercise ago**, counted in sessions and not calendar days. Fall back to
+  `snapToStep(currentKg × 0.85)` when there is less history — the only arithmetic in the engine
+  that can land between steps. `stallCount = 0`.
 - **B5.5** **Deload declined** → `stallCount = 0`, weight holds. Record the decline as a fact.
-- **B5.6** **Manual weight override** → `targetKg` = the weight actually used. A hand change is
+- **B5.6** **Manual weight override** → `currentKg` = the weight actually used. The stepper moves
+  in whole steps (D5), so an override stays on the grid. A hand change is
   recorded, never silently discarded (INV-7).
-- **B5.7** **Session abandoned** → counts as incomplete; do not advance `targetKg`.
+- **B5.7** **Session abandoned** → counts as incomplete; do not advance `currentKg`.
 
 ## B6 — Derived statistics
 
@@ -294,13 +303,14 @@ Implement `applyOutcome(state, session, sets, history): EngineState`.
 
 ## B7 — Tests
 
-- **B7.1** Unit tests: every rule in B5, every edge case in B3, across a range of step sizes.
+- **B7.1** Unit tests: every rule in B5, every edge case in B3, across a range of step sizes —
+  1, 1.25, 2.5, 5, and something awkward like 0.75.
 - **B7.2** Property tests with fast-check.
-  - **B7.2.1** For any equipment, `prescribe(...)` is always a member of the ladder.
-  - **B7.2.2** `prescribe(...) <= targetKg`, unless the target is below the smallest rung.
-  - **B7.2.3** `targetKg` is monotonically non-decreasing except immediately after a deload.
-  - **B7.2.4** Over N clean sessions, `(final − initial) / N` converges on the increment.
-  - **B7.2.5** Every stored plate combination sums to its rung.
+  - **B7.2.1** For any step size, every weight the engine returns is a whole multiple of the step.
+  - **B7.2.2** `snapToStep(kg) <= kg`, and is never less than one step.
+  - **B7.2.3** `currentKg` is monotonically non-decreasing except immediately after a deload.
+  - **B7.2.4** Over N clean sessions, `final − initial` is **exactly** `N × step`. Not "converges
+    on" — with one number and no rounding in the loop, the drift should be zero.
 - **B7.3** A 365-day simulation: a virtual lifter whose capacity grows on a fixed curve, run through
   the real engine. Assert that deloads fire, each cycle's peak exceeds the previous cycle's peak,
   and the final weight beats the starting weight. Emit the series so it can be charted in the
@@ -506,10 +516,11 @@ everything after is improvement, not enablement.
 **Effort.** A few evenings.
 
 ## G1 — Onboarding
-- **G1.1** Ask **one number**: the smallest jump you can make. That is a complete ladder (B3.1).
-  Do not build a plate inventory UI, and do not ask for a lightest weight — the ladder is anchored
-  at zero (B2.2.2).
-- **G1.2** Default all five starting weights to the lightest rung behind one button. They are
+- **G1.1** Ask **one number**: the smallest jump you can make. That is everything the engine needs.
+  Do not build a plate inventory UI, and do not ask for a lightest weight — the weights that exist
+  are the multiples of the step (B2.2.2). Say plainly on this screen that it is also how fast you
+  progress: one step per clean session.
+- **G1.2** Default all five starting weights to one step behind one button. They are
   tap-editable afterwards, and the method says start absurdly light.
 - **G1.3** Ask the weak side per exercise, with an "I don't know" default.
 - **G1.4** One line: "Set a recurring alarm on your phone for when you want to train" — the app does
@@ -550,8 +561,8 @@ everything after is improvement, not enablement.
 
 ## H2 — Documentation
 - **H2.1** `docs/adr/` — short architecture decision records, four or five paragraphs each: why
-  append-only, why the virtual target, why IndexedDB over localStorage, why no accounts, why web
-  before native, why tap-to-edit over the alternatives.
+  append-only, why the step *is* the increment and the virtual target was dropped, why IndexedDB
+  over localStorage, why no accounts, why web before native, why tap-to-edit over the alternatives.
 - **H2.2** README: a ten-second GIF of a real session in the first screenful, the method in five
   lines, the simulation chart from B7.3, the live link, install instructions.
 - **H2.3** Screenshots of every screen.

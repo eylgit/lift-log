@@ -4,6 +4,6 @@
  */
 
 export * from "./types";
-export * from "./ladder";
+export * from "./weights";
 export * from "./progression";
 export * from "./stats";

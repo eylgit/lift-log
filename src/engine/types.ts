@@ -49,18 +49,19 @@ export type MovementPattern =
  */
 export type Side = "left" | "right";
 
+/**
+ * One lift in the rotation.
+ *
+ * Note what is *not* here: a per-exercise increment. How much to add on a clean
+ * session is the athlete's step, the same for every lift (see Equipment, and
+ * `lift-log-design.md` §6.1). A hinge would absorb a bigger jump than an
+ * overhead press does, but buying that costs a second number that disagrees
+ * with the one on the screen.
+ */
 export type Exercise = {
   readonly id: ExerciseId;
   readonly name: string;
   readonly pattern: MovementPattern;
-  /**
-   * How much to add on a clean session. Kilograms (INV-1), and per-exercise:
-   * a hinge absorbs 5 kg happily, an overhead press does not.
-   *
-   * This is what the engine *wants* to add. What it can actually add depends
-   * on the equipment — see the weight ladder (B3).
-   */
-  readonly incrementKg: number;
   /** Search text for a form demo. The engine never fetches anything (INV-9). */
   readonly videoQuery: string;
 };
@@ -68,8 +69,9 @@ export type Exercise = {
 /* ------------------------------------------------------------- equipment */
 
 /**
- * The default step. Overridable in settings (G3.1) and nothing else about the
- * athlete's kit is asked for.
+ * The default step, and so the default rate of progress: one of these per clean
+ * session. Overridable in settings (G3.1), and nothing else about the athlete's
+ * kit is asked for.
  */
 export const DEFAULT_STEP_KG = 1;
 
@@ -77,12 +79,17 @@ export const DEFAULT_STEP_KG = 1;
  * The one thing the engine needs to know about the athlete's kit: the smallest
  * jump they can make.
  *
- * The reachable weights are the multiples of `stepKg` — 2.5 gives 2.5, 5, 7.5,
- * 17.5, 20, 22.5, and so on. The ladder is anchored at zero rather than at a
- * separate "lightest weight", because a lightest weight that is not itself a
- * multiple of the step puts every familiar number off the grid: a 1 kg minimum
- * with a 2.5 kg step yields 1, 3.5, 6, 8.5 and never 17.5. Anchoring at zero
- * stays on-grid at any step size, and makes the lightest rung one step.
+ * It is also the increment: a clean session adds exactly one step (B3). The
+ * reachable weights are therefore the multiples of `stepKg` — 2.5 gives 2.5, 5,
+ * 7.5, 17.5, 20, and so on. They are anchored at zero rather than at a separate
+ * "lightest weight", because a lightest weight that is not itself a multiple of
+ * the step puts every familiar number off the grid: a 1 kg minimum with a 2.5 kg
+ * step yields 1, 3.5, 6, 8.5 and never 17.5. Anchoring at zero stays on-grid at
+ * any step size, and makes the lightest weight one step.
+ *
+ * The price of one number instead of two: the athlete cannot progress in
+ * increments smaller than their lightest plate. Micro-plates are cheaper than
+ * the machinery that would avoid this.
  *
  * Deliberately not a union over dumbbell types. One number describes a rack, an
  * adjustable dumbbell and a loaded bar equally well for the only question the
@@ -175,12 +182,12 @@ export type Prescription = {
 export type EngineState = {
   readonly exerciseId: ExerciseId;
   /**
-   * The weight the engine is working toward. It is *virtual*: it may sit
-   * between two weights the equipment can make, and the ladder rounds it to
-   * something loadable at prescription time. Keeping the target exact stops
-   * repeated rounding from eating the increment.
+   * The weight to prescribe next, in kg. Always a whole multiple of the step,
+   * because it only ever got here by adding steps to a weight that already was
+   * — the two exceptions go through `snapToStep` (B3.2). What the engine says
+   * and what the athlete loads are the same number.
    */
-  readonly targetKg: number;
+  readonly currentKg: number;
   /** Consecutive failed sessions. Three triggers the deload (B5). */
   readonly stallCount: number;
   readonly weakSide: Side;
