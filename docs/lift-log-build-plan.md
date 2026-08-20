@@ -311,9 +311,9 @@ Implement `applyOutcome(state, session, sets, history): EngineState`.
     `× 0.85` snapped to a grid: there is no grid, and moving in steps keeps the number on the
     athlete's own ladder. Start at 22 with a 2.5 step and the weights are 22, 24.5, 27 — a
     zero-anchored grid would drop them onto 27.5, which they have never lifted.
-- **B5.6** **Manual weight override** → `currentKg` = the weight actually used. The stepper moves
-  in whole steps (D5), so an override stays on the grid. A hand change is
-  recorded, never silently discarded (INV-7).
+- **B5.6** **Manual weight override** → `currentKg` = the weight actually used. Not a branch:
+  progression is measured from `actualKg` throughout, so an override is already accounted for and
+  can never be silently discarded (INV-7).
 - **B5.7** **Session abandoned** → the engine learns nothing. `currentKg` and `stallCount` both
   unchanged; the next session is the one this would have been. Not a stall: with the deload no
   longer behind a prompt (B5.3), counting walk-outs would silently take weight off the bar, and
@@ -321,10 +321,44 @@ Implement `applyOutcome(state, session, sets, history): EngineState`.
 
 ## B6 — Derived statistics
 
+Every function takes the log as an argument and returns numbers — no storage, and **no clock**.
+Where today's date is needed it is a `TrainingDay` parameter, because a clock is I/O and the engine
+has none. That is also what lets these be tested without freezing time.
+
+Only **complete, undeleted** sessions count toward any statistic. Abandoned sessions stay in the log
+and the export, but a walked-away-from session on the chart would put a spike at a weight that was
+never really lifted.
+
 - **B6.1** `estimated1RM(weightKg, reps)` using Epley: `w × (1 + reps/30)`.
-- **B6.2** `chartSeries(history)` → the points for the sawtooth, plus deload markers.
-- **B6.3** `streak(history)` and `sessionsThisMonth(history)`, both using `trainingDay` (INV-5).
-- **B6.4** `personalBest(history)` per exercise.
+  - **B6.1.1** A single rep returns the weight itself rather than going through the formula, which
+    would turn a 40 kg single into a 41.33 kg max — more than the thing that was just done.
+  - **B6.1.2** Every lift is single-sided, so this is a **per-hand** figure. Do not double it for
+    display.
+- **B6.2** `chartSeries(exerciseId, history, sets)` → one `ChartPoint` per session, oldest first:
+  weight, estimated 1RM from the best set, and two flags.
+  - **B6.2.1** Takes the exercise explicitly and filters. Two exercises on one line would look like
+    a plausible chart rather than an obvious bug.
+  - **B6.2.2** The drop flag is `weightDropped`, not `isDeload`. The log does not record *who*
+    dropped the weight — the engine after three stalls, or the athlete by hand — so the honest
+    statement is that it went down. E2.3 can still render it as a deload marker; telling the two
+    apart needs the provenance work in K1.1.
+- **B6.3** `streak(history, today)` and `sessionsThisMonth(history, today)`, both on `trainingDay`
+  (INV-5).
+  - **B6.3.1** The streak counts **days, not sessions**, across every exercise: the question is
+    whether the athlete turned up.
+  - **B6.3.2** Today not being trained yet does not break it — the count starts from yesterday.
+    Otherwise every streak reads zero until training is finished, which is when the number is least
+    useful and most discouraging.
+  - **B6.3.3** It cannot express a debt, and must not learn to (INV-6).
+  - **B6.3.4** Stepping back a day uses `Date.UTC` arithmetic. This does **not** breach INV-5, which
+    forbids *deriving* a training day from an instant. The day here has already been decided and
+    written down; UTC is what stops the arithmetic picking up a timezone, and it gets month ends and
+    leap days right where string arithmetic would not.
+- **B6.4** `personalBest(exerciseId, history)` → the heaviest weight completed, or null.
+  - **B6.4.1** Heaviest weight, not best estimated 1RM — different questions, and the stat row
+    (E2.4) shows both. This is the one an athlete means by "my best".
+  - **B6.4.2** Rep quality is not required. Three of a target five at 40 kg is a stall and the engine
+    treats it as one, but 40 kg still went up. Ties go to the day it was first reached.
 
 ## B7 — Tests
 
