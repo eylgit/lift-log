@@ -20,7 +20,7 @@ can read.
 
 ## Status
 
-**Live at <https://lift-log.green-sun-5a13.workers.dev/>** — installable to a home screen and
+**Live at <https://lift-log.greensun.workers.dev/>** — installable to a home screen and
 works offline. There is no progression engine and no session runner yet: the Today screen renders
 a fixed rotation.
 
