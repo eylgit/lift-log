@@ -230,12 +230,15 @@ part; build it before any UI.
 ## B2 — Types and the data model
 
 - **B2.1** Define `Exercise` — id, name, movement pattern, `incrementKg`, `videoQuery`.
-- **B2.2** Define `Equipment` as a discriminated union.
-  - **B2.2.1** `{ kind: "simple", minKg, stepKg }` — the v1 default, two numbers.
-  - **B2.2.2** `{ kind: "adjustable", minKg, maxKg, stepKg }`.
-  - **B2.2.3** `{ kind: "fixed", weightsKg: number[] }`.
-  - **B2.2.4** `{ kind: "loadable", barKg, collarKg, plates: {massKg, pairs}[] }` — defer the
-    implementation to a later part, but define the type now so nothing downstream has to change.
+- **B2.2** Define `Equipment` as `{ stepKg }` — one number, the smallest jump the athlete can
+  make. `DEFAULT_STEP_KG` is 1.
+  - **B2.2.1** Not a union over dumbbell types. A rack, an adjustable dumbbell and a loaded bar are
+    all described well enough by their step for the only question the engine asks: which weights
+    exist? A plate inventory is a settings screen that buys nothing (G1.1, G3.2).
+  - **B2.2.2** The ladder is anchored at **zero**, not at a separate lightest weight. A minimum that
+    is not itself a multiple of the step puts every familiar number off the grid — 1 kg minimum with
+    a 2.5 kg step gives 1, 3.5, 6, 8.5 and never 17.5. Anchoring at zero stays on-grid at any step,
+    and makes the lightest rung one step.
 - **B2.3** Define `SetLog` — `{ id, sessionId, ordinal, side, targetReps, doneReps, loggedAt }`.
   `doneReps` is a **number** (INV-4).
 - **B2.4** Define `Session` — `{ id, exerciseId, startedAt, finishedAt, trainingDay, prescribedKg,
@@ -247,14 +250,13 @@ part; build it before any UI.
 
 ## B3 — The weight ladder
 
-- **B3.1** Implement `buildLadder(equipment): number[]` returning a sorted, deduplicated ascending
-  list of achievable weights.
-  - **B3.1.1** `simple` → `min, min+step, min+2·step, …` up to a sane ceiling.
-  - **B3.1.2** `adjustable` → the same, bounded by `maxKg`.
-  - **B3.1.3** `fixed` → the given list, sorted and deduplicated.
-  - **B3.1.4** `loadable` → `bar + 2·collar + 2 × (any sub-multiset sum of one-side plates)`, via a
-    dynamic-programming pass over reachable sums. Store one canonical combination per rung
-    (greedy, largest first) for the "per side: 10 + 2.5" display.
+- **B3.1** Implement `buildLadder(equipment): number[]` returning a sorted ascending list of
+  achievable weights: `step, 2·step, 3·step, …` up to a sane ceiling.
+  - **B3.1.1** Floating point is the whole difficulty here. `0.1 + 0.2 !== 0.3`, and a step of 2.5
+    accumulated by repeated addition drifts. Compute each rung as `n · step` and round to a fixed
+    number of decimals rather than adding repeatedly, so 17.5 is exactly 17.5 and compares equal.
+  - **B3.1.2** Reject a `stepKg` that is zero, negative or not finite. A bad step is the one input
+    that can hang the ladder.
 - **B3.2** Implement `snapDown(ladder, targetKg): number` — the largest rung at or below the target,
   or the smallest rung if the target is below the whole ladder. Never throw.
 
@@ -292,7 +294,7 @@ Implement `applyOutcome(state, session, sets, history): EngineState`.
 
 ## B7 — Tests
 
-- **B7.1** Unit tests: every rule in B5, every edge case in B3, every equipment kind.
+- **B7.1** Unit tests: every rule in B5, every edge case in B3, across a range of step sizes.
 - **B7.2** Property tests with fast-check.
   - **B7.2.1** For any equipment, `prescribe(...)` is always a member of the ladder.
   - **B7.2.2** `prescribe(...) <= targetKg`, unless the target is below the smallest rung.
@@ -504,8 +506,9 @@ everything after is improvement, not enablement.
 **Effort.** A few evenings.
 
 ## G1 — Onboarding
-- **G1.1** Ask **two numbers only**: the lightest weight you can load, and the smallest jump you can
-  make. That is a complete ladder (B3.1.1). Do not build a plate inventory UI in v1.
+- **G1.1** Ask **one number**: the smallest jump you can make. That is a complete ladder (B3.1).
+  Do not build a plate inventory UI, and do not ask for a lightest weight — the ladder is anchored
+  at zero (B2.2.2).
 - **G1.2** Default all five starting weights to the lightest rung behind one button. They are
   tap-editable afterwards, and the method says start absurdly light.
 - **G1.3** Ask the weak side per exercise, with an "I don't know" default.
@@ -521,7 +524,7 @@ everything after is improvement, not enablement.
   first-time visitor lands on empty charts and a form.
 
 ## G3 — Settings
-- **G3.1** Equipment, rest length, units display, export/import, about, reset.
+- **G3.1** Step size, rest length, units display, export/import, about, reset.
 - **G3.2** Resist adding settings. Each one is a decision handed back to the user, which is the
   thing the app exists to remove.
 - **G3.3** About: credit Scott Chen with a link to onelift.org, plus the health disclaimer.

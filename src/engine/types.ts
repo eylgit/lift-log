@@ -67,42 +67,31 @@ export type Exercise = {
 
 /* ------------------------------------------------------------- equipment */
 
-/** One size of plate, and how many pairs of it the athlete owns. */
-export type Plate = {
-  readonly massKg: number;
-  readonly pairs: number;
-};
+/**
+ * The default step. Overridable in settings (G3.1) and nothing else about the
+ * athlete's kit is asked for.
+ */
+export const DEFAULT_STEP_KG = 1;
 
 /**
- * What the athlete can actually load, which decides which weights exist for
- * them. Knowing to add 2.5 kg is useless if 21 kg is not a number their kit
- * can make; the ladder (B3) turns this into the list of reachable weights.
+ * The one thing the engine needs to know about the athlete's kit: the smallest
+ * jump they can make.
  *
- * Discriminated on `kind`, so a `switch` over it is exhaustive.
+ * The reachable weights are the multiples of `stepKg` — 2.5 gives 2.5, 5, 7.5,
+ * 17.5, 20, 22.5, and so on. The ladder is anchored at zero rather than at a
+ * separate "lightest weight", because a lightest weight that is not itself a
+ * multiple of the step puts every familiar number off the grid: a 1 kg minimum
+ * with a 2.5 kg step yields 1, 3.5, 6, 8.5 and never 17.5. Anchoring at zero
+ * stays on-grid at any step size, and makes the lightest rung one step.
+ *
+ * Deliberately not a union over dumbbell types. One number describes a rack, an
+ * adjustable dumbbell and a loaded bar equally well for the only question the
+ * engine asks: which weights exist? A plate inventory is a settings screen that
+ * buys nothing (G1.1, G3.2).
  */
-export type Equipment =
-  /** The v1 default: a lightest weight and a fixed step, unbounded above. */
-  | { readonly kind: "simple"; readonly minKg: number; readonly stepKg: number }
-  /** A dial-a-weight dumbbell: same, but with a ceiling. */
-  | {
-      readonly kind: "adjustable";
-      readonly minKg: number;
-      readonly maxKg: number;
-      readonly stepKg: number;
-    }
-  /** A rack of fixed dumbbells. Only these weights exist. */
-  | { readonly kind: "fixed"; readonly weightsKg: readonly number[] }
-  /**
-   * A bar and plates. Reachable weights are the bar plus symmetric pairs.
-   * The type is defined now so nothing downstream changes when B3 implements
-   * it; until then the ladder may reject it.
-   */
-  | {
-      readonly kind: "loadable";
-      readonly barKg: number;
-      readonly collarKg: number;
-      readonly plates: readonly Plate[];
-    };
+export type Equipment = {
+  readonly stepKg: number;
+};
 
 /* ----------------------------------------------------------------- facts */
 
