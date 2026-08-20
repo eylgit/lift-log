@@ -1,0 +1,150 @@
+/* Blueprint — the app's one palette. No theme switching by design. */
+:root {
+  --bg: #EDF1F6;
+  --surf: #FFFFFF;
+  --surf-2: #E3E9F1;
+  --line: #D2DAE5;
+  --line-2: #B4C0D0;
+  --ink: #131C27;
+  --ink-2: #4E5C6C;
+  --ink-3: #7B8897;
+  --accent: #17539B;
+  --accent-deep: #103C72;
+  --on-accent: #FFFFFF;
+  --soft: #DCE7F5;
+  --good: #16714F;
+  --warn: #8A5A08;
+
+  --f-display: "Bricolage Grotesque", "Helvetica Neue", Arial, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--f-display);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+
+.app {
+  height: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  padding: max(24px, env(safe-area-inset-top)) 22px max(20px, env(safe-area-inset-bottom));
+}
+
+.eyebrow {
+  font-family: var(--f-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.rotation { display: flex; gap: 6px; align-items: center; }
+.rotation i { width: 7px; height: 7px; border-radius: 4px; background: var(--line-2); }
+.rotation i.on { width: 22px; background: var(--accent); }
+
+.lift {
+  font-size: clamp(30px, 9vw, 38px);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.03;
+  margin: 26px 0 0;
+  text-wrap: balance;
+}
+
+.load { display: flex; align-items: baseline; gap: 9px; margin-top: 32px; }
+.load .kg {
+  font-size: clamp(68px, 21vw, 88px);
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  line-height: 0.85;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.load .unit { font-family: var(--f-mono); font-size: 20px; color: var(--accent); }
+
+.scheme { margin-top: 14px; font-size: 18px; color: var(--ink-2); }
+
+.rule { height: 1px; background: var(--line); margin: 26px 0 18px; }
+
+.kv { display: flex; justify-content: space-between; align-items: baseline; gap: 14px; }
+.kv + .kv { margin-top: 11px; }
+.kv .k { font-family: var(--f-mono); font-size: 11.5px; letter-spacing: 0.06em; color: var(--ink-3); }
+.kv .v { font-family: var(--f-mono); font-size: 13.5px; text-align: right; }
+
+.grow { flex-grow: 1; min-height: 22px; }
+
+.start {
+  width: 100%;
+  height: 72px;
+  border-radius: 3px;
+  background: var(--accent);
+  color: var(--on-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: 20px;
+  font-weight: 600;
+}
+.start:active { transform: translateY(1px); }
+.start[disabled] { opacity: 0.55; cursor: default; transform: none; }
+
+.footnote {
+  font-family: var(--f-mono);
+  font-size: 12px;
+  color: var(--ink-3);
+  text-align: center;
+  margin-top: 12px;
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--soft);
+  color: var(--accent-deep);
+  border-radius: 3px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.banner button {
+  font-family: var(--f-mono);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  padding: 6px 11px;
+}
+.banner .spacer { flex-grow: 1; }
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  margin-top: 14px;
+}
+.status .dot { width: 7px; height: 7px; border-radius: 4px; background: var(--good); }
+.status .dot.off { background: var(--warn); }
