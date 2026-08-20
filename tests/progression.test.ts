@@ -90,17 +90,18 @@ describe("nextWeight", () => {
       );
     });
 
-    it("B7.2.1 — every weight it returns is a whole multiple of the step", () => {
+    it("adds the step to whatever it is given, on-grid or not", () => {
+      // B7.2.1 used to assert that every weight is a whole multiple of the
+      // step. It went with the grid: a start weight of 22 with a 2.5 step gives
+      // 22, 24.5, 27, and none of those are multiples of anything. What is
+      // still true is that each clean session adds exactly one step.
       fc.assert(
         fc.property(
           fc.constantFrom(0.5, 0.75, 1, 1.25, 2.5, 5),
-          fc.integer({ min: 1, max: 200 }),
-          fc.boolean(),
-          (stepKg, steps, clean) => {
-            const state = stateFor(PRESS, Number((steps * stepKg).toFixed(2)));
-            const kg = nextWeight(state, kit(stepKg), clean);
-            // In hundredths, so the divisibility check has no float in it.
-            expect(Math.round(kg * 100) % Math.round(stepKg * 100)).toBe(0);
+          fc.integer({ min: 1, max: 20_000 }).map((h) => h / 100),
+          (stepKg, currentKg) => {
+            const kg = nextWeight(stateFor(PRESS, currentKg), kit(stepKg), true);
+            expect(kg).toBe(Number((currentKg + stepKg).toFixed(2)));
           },
         ),
       );
@@ -160,9 +161,9 @@ describe("prescribe", () => {
     expect(() => prescribe(state, ROW)).toThrow(RangeError);
   });
 
-  it("passes an off-grid weight through rather than quietly tidying it", () => {
-    // currentKg is a multiple of the step by construction, so this cannot
-    // happen. If it ever does, the bug should be visible, not smoothed over.
+  it("passes the weight through untouched, whatever it is", () => {
+    // Nothing rounds or snaps it: the step is what the athlete intends to add,
+    // not a claim about which weights the rack can make.
     expect(prescribe(stateFor(PRESS, 17.3), PRESS).weightKg).toBe(17.3);
   });
 });

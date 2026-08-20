@@ -234,15 +234,33 @@ progresses at exactly the rate it displays.
 So the cost is accepted and stated plainly: **you cannot progress in steps smaller than your
 lightest plate.** Buy lighter plates.
 
-### 6.2 Where rounding still happens
+### 6.2 The step is an aspiration, not a constraint
 
-Two paths can land between steps, and both snap **down** to a multiple of the step:
+`stepKg` is how much you **intend** to add on a clean session. It is not a claim about which
+weights exist, and the engine never rounds a weight to fit it.
 
-- the deload fallback, `× 0.85`, when the log is too short to answer honestly (§6.3);
-- a start weight typed in by hand at onboarding.
+An earlier draft had it both ways: the reachable weights were the multiples of the step, anchored
+at zero, and anything that landed between them was snapped down. That does not survive contact
+with real kit. A fixed dumbbell rack runs 5, 10, 12.5, 15, 17.5, 20, 22.5 — gaps of 2.5 low down
+and 5 higher up. No single number describes it, which is exactly why the plate inventory was
+rejected in the first place (§6.5). Snapping to multiples of the step was therefore producing
+weights that *looked* loadable with no guarantee they were: false confidence, paid for in
+machinery.
 
-Everything else moves in whole steps by construction. `snapToStep` is a few lines of arithmetic
-in `engine/weights.ts` — not a data structure, and nothing downstream has to know it exists.
+So the division of labour is: **the engine names a target, and you reconcile it with the rack.**
+Every weight is tap-to-edit, and progression is measured from what you actually lifted, so a
+correction is absorbed rather than fought — lift a clean session at a weight you chose and the
+next one is a step above that.
+
+The known cost is a plateau the engine cannot see. A 2.5 kg step against 5 kg plates means the
+target is never loadable: you repeat a weight indefinitely, your sets stay clean, and the stall
+counter never moves. The grid did not solve this either — it would have named 37.5 just the
+same — it only hid it. The fix belongs on screen as a warning, not in the engine as a rule.
+
+There is one place a weight is still derived rather than lifted or typed: the deload fallback
+(§6.3). It moves a **whole number of steps down from where you are**, which keeps the number on
+your own ladder — start at 22 with a 2.5 step and your weights are 22, 24.5, 27, and a grid
+anchored at zero would drop you onto 27.5, a weight you have never touched.
 
 ### 6.3 The rules
 
@@ -250,15 +268,24 @@ in `engine/weights.ts` — not a data structure, and nothing downstream has to k
 |---|---|
 | All 3 sets clean on both sides | `weight += step`; `stall = 0` |
 | Any set short of 5 reps | `weight` unchanged; `stall += 1` |
-| `stall` reaches 3 (fixed) | Propose deload → on accept, `weight =` the weight used **6 sessions of this exercise ago**; `stall = 0` |
+| `stall` reaches 3 (fixed) | **Deload, there and then.** `weight =` the weight used **6 sessions of this exercise ago**; `stall = 0` |
 | User overrides the weight by hand | Record it as a fact; `weight =` what they actually used |
+
+The deload is applied, not offered. An earlier draft had the engine propose and the athlete
+accept or decline, and it was dropped: three stalls is about a fortnight of being stuck, which is
+unambiguous enough that a confirmation is friction rather than control — and the weight is
+tap-to-edit anyway, so anyone who disagrees with the drop taps it back. The engine still *says*
+the weight moved and why. Reporting is not asking.
 
 The deload rule *reads the log* rather than doing arithmetic — "go back four weeks" resolves to
 a weight you actually used, which is what the method prescribes and is more honest than a
 percentage. Count it in **sessions of that exercise, not calendar days**: after a two-week break,
 28 calendar days back might be only two sessions, which makes the deload far too shallow. Six
-sessions is roughly four weeks when you are consistent, and still correct when you are not. Fall
-back to `weight × 0.85`, snapped down to a step, when there is less history than that.
+sessions is roughly four weeks when you are consistent, and still correct when you are not. The
+weight comes back exactly as it was lifted. Fall back to ~15% off, expressed as a whole number of
+steps down (§6.2), when there is less history than that — or when the historical weight is not
+actually below where you are now, which happens after a hand override downwards and where a
+"deload" upwards would be nonsense.
 
 Each exercise comes round every five days, so three consecutive stalls is about a fortnight
 of being stuck — the right amount of patience.
@@ -270,8 +297,8 @@ whole reason for training unilaterally.
 
 ### 6.5 What the equipment contributes
 
-One number: `stepKg`. The weights that exist are its multiples — 2.5 gives 2.5, 5, 7.5, 10, and
-so on — anchored at zero so that every familiar number stays on the grid.
+One number: `stepKg` — what you intend to add on a clean session, not a description of your rack
+(§6.2).
 
 Plate inventories, adjustable-dumbbell ranges, fixed-dumbbell lists and machine stacks were all
 considered and dropped. They are a settings screen that answers a question the engine no longer
@@ -280,6 +307,9 @@ asks. One number describes a rack, an adjustable dumbbell and a loaded bar equal
 ### 6.6 Edge cases that must be handled
 - A weight below one step, from a hand-typed start or a deload off a very light bar →
   prescribe one step, don't error.
+- The target is never loadable (a 2.5 kg step against 5 kg plates) → the athlete repeats a weight,
+  the sets stay clean, and the engine sees no stall. It cannot fix this; it should notice and say
+  so (§6.2).
 - Empty history → prescribe the onboarding start weight.
 - Session abandoned halfway → mark abandoned, count incomplete, don't advance the weight.
 - Pounds: store kg internally, convert only for display, and let lb users set an lb-native
@@ -536,10 +566,13 @@ Tests go where the logic is. UI tests stay thin on purpose.
 **Unit** — every rule in §6.3 and every edge case in §6.6, across a range of step sizes.
 
 **Property-based** (fast-check) — the ones worth showing off:
-- For any step size, every weight the engine prescribes is a whole multiple of the step.
-- The weight is monotonically non-decreasing except immediately after a deload.
 - Over N clean sessions, `final − initial` is exactly `N × step` — no floating-point drift.
-- `snapToStep(w) ≤ w`, and never returns less than one step.
+- The weight is monotonically non-decreasing except immediately after a deload.
+- A deload never lands above the weight that was stuck, nor below one step.
+
+Two earlier properties went with the grid (§6.2) — "every weight is a whole multiple of the
+step", and the properties of `snapToStep`, which no longer exists. The drift property is the one
+that mattered and it is unchanged.
 
 **Simulation** — model a virtual lifter whose capacity grows on a fixed curve, run 365
 simulated days through the real engine, assert that deloads fire, each cycle's peak exceeds

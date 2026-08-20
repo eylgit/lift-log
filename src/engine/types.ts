@@ -76,25 +76,33 @@ export type Exercise = {
 export const DEFAULT_STEP_KG = 1;
 
 /**
- * The one thing the engine needs to know about the athlete's kit: the smallest
- * jump they can make.
+ * How much the athlete *intends* to add on a clean session. One number, set in
+ * settings (G3.1), and the only thing the engine knows about their kit.
  *
- * It is also the increment: a clean session adds exactly one step (B3). The
- * reachable weights are therefore the multiples of `stepKg` — 2.5 gives 2.5, 5,
- * 7.5, 17.5, 20, and so on. They are anchored at zero rather than at a separate
- * "lightest weight", because a lightest weight that is not itself a multiple of
- * the step puts every familiar number off the grid: a 1 kg minimum with a 2.5 kg
- * step yields 1, 3.5, 6, 8.5 and never 17.5. Anchoring at zero stays on-grid at
- * any step size, and makes the lightest weight one step.
+ * It is an aspiration, not a constraint. `stepKg` makes no claim about which
+ * weights can be loaded, and the engine never rounds a weight to fit it. That
+ * distinction is the whole of this comment, so it is worth being clear about
+ * why the obvious reading was dropped.
  *
- * The price of one number instead of two: the athlete cannot progress in
- * increments smaller than their lightest plate. Micro-plates are cheaper than
- * the machinery that would avoid this.
+ * The obvious reading is that the reachable weights are the multiples of the
+ * step, so every number the engine produces should be snapped onto that grid.
+ * It does not survive contact with real kit. A fixed dumbbell rack runs 5, 10,
+ * 12.5, 15, 17.5, 20, 22.5 — gaps of 2.5 low down and 5 higher up. No single
+ * number describes that, which is exactly why a plate inventory was rejected
+ * (G1.1, G3.2). Snapping to multiples of the step therefore produced weights
+ * that *looked* loadable with no guarantee they were: false confidence, paid
+ * for in machinery.
  *
- * Deliberately not a union over dumbbell types. One number describes a rack, an
- * adjustable dumbbell and a loaded bar equally well for the only question the
- * engine asks: which weights exist? A plate inventory is a settings screen that
- * buys nothing (G1.1, G3.2).
+ * So the engine states a target and the athlete reconciles it with the rack.
+ * Every weight is tap-to-edit (INV-7) and progression is measured from what was
+ * actually lifted, so a correction is absorbed rather than fought — lift a
+ * clean session at a weight you chose and the next one is a step above that.
+ *
+ * The cost is a plateau the engine cannot see: a 2.5 kg step against 5 kg
+ * plates means the target is never loadable, the athlete repeats a weight
+ * forever, and the sets stay clean so the stall counter never moves. The old
+ * grid did not solve this either — it would name 37.5 just the same — it only
+ * hid it. The fix is a warning, not a rule (Part K).
  */
 export type Equipment = {
   readonly stepKg: number;
@@ -163,7 +171,11 @@ export type Session = {
  */
 export type Prescription = {
   readonly exercise: Exercise;
-  /** Kilograms, and always a weight the equipment can actually make. */
+  /**
+   * Kilograms. A target, not a promise: the engine does not know what the rack
+   * holds, so this is what to aim for and the athlete adjusts it if the number
+   * is not loadable (see Equipment, INV-7).
+   */
   readonly weightKg: number;
   readonly repsPerSide: number;
   readonly sets: number;
@@ -182,10 +194,11 @@ export type Prescription = {
 export type EngineState = {
   readonly exerciseId: ExerciseId;
   /**
-   * The weight to prescribe next, in kg. Always a whole multiple of the step,
-   * because it only ever got here by adding steps to a weight that already was
-   * — the two exceptions go through `snapToStep` (B3.2). What the engine says
-   * and what the athlete loads are the same number.
+   * The weight to prescribe next, in kg.
+   *
+   * It is not snapped to anything. It is a start weight, or a weight the
+   * athlete actually lifted, plus or minus whole steps — so it stays in their
+   * own vocabulary rather than on a grid anchored at zero (see Equipment).
    */
   readonly currentKg: number;
   /** Consecutive failed sessions. Three triggers the deload (B5). */

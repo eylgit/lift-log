@@ -3,7 +3,7 @@
 A staged plan for building Lift Log, written to be handed to a developer who has not been part of
 the design conversation.
 
-**How to read this.** The plan is split into **parts** (A–J). Each part is self-contained, has
+**How to read this.** The plan is split into **parts** (A–K). Each part is self-contained, has
 explicit prerequisites, and ends with **exit criteria** — a checklist the project owner reviews
 before the next part starts. Numbering is `Part` → `step` → `sub-step` → `sub-sub-step`, so
 `A1.2.3` is Part A, step 1, sub-step 2, sub-sub-step 3.
@@ -231,15 +231,23 @@ part; build it before any UI.
 
 - **B2.1** Define `Exercise` — id, name, movement pattern, `videoQuery`. No per-exercise
   increment: the step is the increment (B3).
-- **B2.2** Define `Equipment` as `{ stepKg }` — one number, the smallest jump the athlete can
-  make. `DEFAULT_STEP_KG` is 1.
-  - **B2.2.1** Not a union over dumbbell types. A rack, an adjustable dumbbell and a loaded bar are
-    all described well enough by their step for the only question the engine asks: which weights
-    exist? A plate inventory is a settings screen that buys nothing (G1.1, G3.2).
-  - **B2.2.2** The reachable weights are the **multiples of the step**, anchored at zero rather than
-    at a separate lightest weight. A minimum that is not itself a multiple of the step puts every
-    familiar number off the grid — 1 kg minimum with a 2.5 kg step gives 1, 3.5, 6, 8.5 and never
-    17.5. Anchoring at zero stays on-grid at any step, and makes the lightest weight one step.
+- **B2.2** Define `Equipment` as `{ stepKg }` — one number: how much the athlete **intends** to add
+  on a clean session. `DEFAULT_STEP_KG` is 1.
+  - **B2.2.1** Not a union over dumbbell types, and not a plate inventory — a settings screen that
+    buys nothing (G1.1, G3.2).
+  - **B2.2.2** **The step is an aspiration, not a constraint.** It makes no claim about which
+    weights can be loaded, and the engine never rounds a weight to fit it. An earlier draft had the
+    reachable weights be the multiples of the step, anchored at zero, and snapped everything onto
+    that grid. It does not survive contact with real kit: a fixed rack runs 5, 10, 12.5, 15, 17.5,
+    20, 22.5 — gaps of 2.5 low down and 5 higher up — and no single number describes it. Snapping
+    produced weights that *looked* loadable with no guarantee they were.
+  - **B2.2.3** So the engine names a target and the athlete reconciles it with the rack. Every
+    weight is tap-to-edit (INV-7) and progression is measured from what was actually lifted, so a
+    correction is absorbed rather than fought.
+  - **B2.2.4** The known cost is a plateau the engine cannot see: a 2.5 kg step against 5 kg plates
+    means the target is never loadable, the athlete repeats a weight indefinitely, and the sets stay
+    clean so the stall counter never moves. The grid did not solve this either — it named 37.5 just
+    the same — it only hid it. **The fix is a warning, not a rule (K2.3).**
 - **B2.3** Define `SetLog` — `{ id, sessionId, ordinal, side, targetReps, doneReps, loggedAt }`.
   `doneReps` is a **number** (INV-4).
 - **B2.4** Define `Session` — `{ id, exerciseId, startedAt, finishedAt, trainingDay, prescribedKg,
@@ -260,9 +268,10 @@ version that was considered and rejected, and what rejecting it costs.
   is the whole difficulty in this file: `0.1 + 0.2 !== 0.3`, and a 2.5 kg step accumulated by
   repeated addition drifts until 17.5 stops comparing equal to 17.5. Every weight the engine
   returns goes through this.
-- **B3.2** Implement `snapToStep(kg, stepKg): number` — the largest multiple of the step at or
-  below `kg`, and never less than one step. Used in exactly two places, both of which can land
-  between steps: the deload fallback (B5.4) and a hand-typed start weight (G1.2). Never throws.
+- **B3.2** ~~`snapToStep`~~ — **dropped.** It rounded a weight down to a multiple of the step, and
+  went with the grid (B2.2.2). Its two callers had nothing left to correct: a hand-typed start
+  weight is the athlete's choice, and the deload fallback now moves in whole steps from where they
+  already are (B5.4).
 - **B3.3** Reject a `stepKg` that is zero, negative, or not finite, in both functions. A bad step
   is the one input that can produce nonsense or hang a loop.
 
@@ -282,17 +291,33 @@ Implement `applyOutcome(state, session, sets, history): EngineState`.
 - **B5.1** **All sets clean on both sides** → `currentKg += equipment.stepKg`; `stallCount = 0`.
   Clean means every `doneReps === targetReps`. **Binary, no tolerance.**
 - **B5.2** **Any set short** → `currentKg` unchanged; `stallCount += 1`.
-- **B5.3** **`stallCount` reaches 3** (fixed, not a setting) → return a deload *proposal*, not a
-  mutation. The UI asks; the engine never deloads silently.
-- **B5.4** **Deload accepted** → `currentKg` = the prescribed weight from **6 sessions of that
-  exercise ago**, counted in sessions and not calendar days. Fall back to
-  `snapToStep(currentKg × 0.85)` when there is less history — the only arithmetic in the engine
-  that can land between steps. `stallCount = 0`.
-- **B5.5** **Deload declined** → `stallCount = 0`, weight holds. Record the decline as a fact.
+- **B5.3** **`stallCount` reaches 3** (fixed, not a setting) → **deload, there and then.**
+  `stallCount = 0`. The engine drops the weight itself; there is no prompt.
+  - **B5.3.1** An earlier draft had the engine *propose* and the UI ask. Dropped: three stalls is
+    about a fortnight of being stuck, which is unambiguous enough that a confirmation is friction
+    rather than control, and the weight is tap-to-edit anyway (INV-7) — anyone who disagrees with
+    the drop taps it back. `lift-log-design.md` §6.3 still describes the prompt and should be
+    corrected.
+  - **B5.3.2** The engine still *reports* the drop alongside the new state, so Today can say the
+    weight moved and why. Reporting is not asking.
+- **B5.4** **The deload weight** → `currentKg` = the weight actually used **6 sessions of that
+  exercise ago**, counted in sessions and not calendar days, over complete sessions only, and
+  returned exactly as it was lifted. Rounding it would invent a constraint the engine does not have.
+  - **B5.4.1** Fall back when there is less history than that, and also when the historical weight
+    is not below the current one — which happens after a hand override downwards, and where a
+    "deload" upwards would be nonsense.
+  - **B5.4.2** The fallback backs off by ~15%, expressed as a **whole number of steps down from the
+    current weight**, rounding the drop up so it is at least as deep as the percentage asks. Not
+    `× 0.85` snapped to a grid: there is no grid, and moving in steps keeps the number on the
+    athlete's own ladder. Start at 22 with a 2.5 step and the weights are 22, 24.5, 27 — a
+    zero-anchored grid would drop them onto 27.5, which they have never lifted.
 - **B5.6** **Manual weight override** → `currentKg` = the weight actually used. The stepper moves
   in whole steps (D5), so an override stays on the grid. A hand change is
   recorded, never silently discarded (INV-7).
-- **B5.7** **Session abandoned** → counts as incomplete; do not advance `currentKg`.
+- **B5.7** **Session abandoned** → the engine learns nothing. `currentKg` and `stallCount` both
+  unchanged; the next session is the one this would have been. Not a stall: with the deload no
+  longer behind a prompt (B5.3), counting walk-outs would silently take weight off the bar, and
+  people abandon sessions for reasons that have nothing to do with strength.
 
 ## B6 — Derived statistics
 
@@ -306,8 +331,10 @@ Implement `applyOutcome(state, session, sets, history): EngineState`.
 - **B7.1** Unit tests: every rule in B5, every edge case in B3, across a range of step sizes —
   1, 1.25, 2.5, 5, and something awkward like 0.75.
 - **B7.2** Property tests with fast-check.
-  - **B7.2.1** For any step size, every weight the engine returns is a whole multiple of the step.
-  - **B7.2.2** `snapToStep(kg) <= kg`, and is never less than one step.
+  - **B7.2.1** ~~Every weight is a whole multiple of the step.~~ **Dropped** with the grid
+    (B2.2.2) — there is nothing for a weight to be a multiple of. B7.2.4 is the property that
+    survived, and it is the one that mattered.
+  - **B7.2.2** ~~`snapToStep(kg) <= kg`.~~ **Dropped** with the function (B3.2).
   - **B7.2.3** `currentKg` is monotonically non-decreasing except immediately after a deload.
   - **B7.2.4** Over N clean sessions, `final − initial` is **exactly** `N × step`. Not "converges
     on" — with one number and no rounding in the loop, the drift should be zero.
@@ -318,8 +345,8 @@ Implement `applyOutcome(state, session, sets, history): EngineState`.
 
 ### Exit criteria — Part B
 
-- [ ] `npm test` passes, including the property tests and the simulation.
-- [ ] Nothing under `src/engine/` imports React, Dexie, or touches `window`/`document`.
+- [x] `npm test` passes, including the property tests. *(The simulation is B7.3, outstanding.)*
+- [x] Nothing under `src/engine/` imports React, Dexie, or touches `window`/`document`.
 - [ ] A reader can follow `progression.ts` end to end in ten minutes.
 - [ ] The simulation output produces a recognisable sawtooth.
 
@@ -417,8 +444,9 @@ everything after is improvement, not enablement.
 
 - **D4.1** Clean → "Next time: 35 kg" with the load breakdown.
 - **D4.2** Missed → "Next time: 32.5 kg again."
-- **D4.3** Third stall → the deload prompt, with the explanation and the climb-back preview.
-  Accepting and declining are both recorded (B5.4, B5.5).
+- **D4.3** Third stall → "Next time: 30 kg" and say why — stuck for three sessions, and where the
+  new number came from (B5.4). A statement, not a prompt: the engine has already dropped it
+  (B5.3.1), and the weight is tap-to-edit if the athlete disagrees.
 
 ## D5 — Tap-to-edit (INV-7)
 
@@ -626,6 +654,62 @@ everything after is improvement, not enablement.
 
 ---
 
+# Part K — Later, nice-to-have *(open list)*
+
+**Goal.** A holding pen for improvements that should not happen now.
+**Prerequisites.** Varies by item. **Effort.** Varies by item.
+
+Nothing here blocks v1, and nothing here should be pulled forward without the project owner saying
+so. **This list is expected to grow** — items get added as they come up during the build, and are
+promoted out when they are worth doing.
+
+A standing principle for this part: **prefer a warning to a mechanism.** A warning that turns out
+to be wrong is deleted and nothing in the log changes. A mechanism that turns out to be wrong has
+been silently reshaping numbers for months, and the damage is already in the history. The engine
+should be right about the few things it can actually know; everything it is guessing at belongs on
+screen as a sentence, not in the code as a rule.
+
+## K1 — Explain the number
+
+Today shows a weight. The engine always knows how that weight was arrived at, but currently throws
+the reason away and shows only the result. A number you cannot account for is a number you stop
+trusting.
+
+- **K1.1** Have the engine return the *provenance* of `currentKg` alongside it. The cases are
+  already the branches of `applyOutcome`:
+  - the starting weight from onboarding, never yet moved;
+  - one step up, because the last session was clean at the weight below;
+  - held, because a set came up short — with how many stalls have accumulated;
+  - dropped, because of three stalls — with where the number came from, a real session six back or
+    the fallback (`Deload.basis` already carries this);
+  - set by hand, because the weight was overridden.
+- **K1.2** Render it as one line under the weight on Today: "up from 26.5 — last session was clean",
+  "held at 27.5 — 2 sets short last time", "dropped from 35 — stuck for three sessions".
+- **K1.3** Keep it derived. The reason is recomputed from the log like everything else (INV-2) and
+  is never a stored string.
+- **K1.4** The same provenance drives the session detail screen in E1.3, so build it once.
+
+## K2 — The warning area
+
+One place on Today where the app says something is off, without changing anything. Every edge case
+that would otherwise need a rule in the engine should be considered for this first.
+
+- **K2.1** **Below the intended step.** The athlete overrode downwards and the jump from last
+  session is smaller than `stepKg`. Say so; do not correct it.
+- **K2.2** **Above the intended step.** Same, upwards.
+- **K2.3** **The silent plateau.** The same weight completed clean several sessions running, with
+  the target never reached because it is not loadable. This is B2.2.4's known hole, and the only
+  item here that catches something the engine genuinely cannot see. The warning should lead
+  somewhere — "your step may be finer than your plates allow, set it to 5?" — so that acting on it
+  makes it stop.
+- **K2.4** **Warnings must resolve or expire.** A warning that fires every session and is dismissed
+  every session is furniture: people stop seeing it within a week, and then it cannot do its job on
+  the day it matters — including K2.3, the one that matters most. Each warning either leads to a
+  one-tap fix or stops firing. Do not let this area become where known-unfixed things go to be
+  quiet.
+
+---
+
 ## Sequencing summary
 
 ```
@@ -646,6 +730,7 @@ A ──► B ──► C ──► D ──► E ──► G ──► H ──
 | H · Ship v1.0 | one weekend | I, J |
 | I · Sync backup | one weekend | — |
 | J · Native apps | one to two weekends | — |
+| K · Later, nice-to-have | varies | — |
 
 ## Standing instructions for whoever builds this
 
