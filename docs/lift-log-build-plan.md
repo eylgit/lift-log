@@ -201,10 +201,11 @@ natively, so nothing here needs a server — the Worker is assets-only, with no 
 
 ### Exit criteria — Part A
 
-- [ ] Private repository exists with the M0 commit, and CI passes on it.
-- [ ] A public URL serves the app, and pushing to `main` redeploys it.
-- [ ] The app is installed on the owner's phone and opens offline.
-- [ ] The final URL is recorded in the README and the repo homepage field.
+- [x] Private repository exists with the M0 commit, and CI passes on it.
+- [x] A public URL serves the app, and pushing to `main` redeploys it.
+- [x] The app is installed on the owner's phone and opens offline.
+- [ ] The final URL is recorded in the README (done) and the repo homepage field (outstanding —
+      needs a token with `metadata: write`, or set it by hand in the repository's About panel).
 
 ---
 

@@ -30,8 +30,8 @@ next one starts. The full plan, with numbered steps, is
 
 | | Part | State |
 | --- | --- | --- |
-| **A** | Repository and deployment | in progress |
-| **B** | Progression engine — pure TypeScript, no UI | next |
+| **A** | Repository and deployment | done |
+| **B** | Progression engine — pure TypeScript, no UI | in progress |
 | **C** | Persistence — IndexedDB, replay, export/import | |
 | **D** | Session runner — *usable from here* | |
 | **E** | History and progress | |
