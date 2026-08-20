@@ -65,13 +65,15 @@ npm run preview    # serve the built app, service worker and all
 
 The build output is a static folder — any static host will do, and the free tiers are permanent.
 
-**Cloudflare Pages** (recommended: served from the root path, which keeps the PWA config simple)
+**Cloudflare Workers** (recommended: served from the root path, which keeps the PWA config simple).
+`wrangler.jsonc` in the repository root describes an assets-only Worker that serves `dist/`.
 
 | Setting | Value |
 | --- | --- |
 | Build command | `npm run build` |
-| Output directory | `dist` |
-| Node version | `20` |
+| Deploy command | `npx wrangler deploy` |
+| Output directory | set in `wrangler.jsonc`, not in the dashboard |
+| Node version | 20 or newer |
 
 **GitHub Pages** serves from `/<repo>/`, so the base path has to match:
 
@@ -84,7 +86,7 @@ The `base` in `vite.config.ts` reads that environment variable and feeds it to t
 to install.
 
 > **The origin is part of your data.** Browser storage is scoped to the exact origin, so moving
-> from `lift-log.pages.dev` to your own domain later strands every existing log on the old one.
+> from the `workers.dev` URL to your own domain later strands every existing log on the old one.
 > Pick the URL you intend to keep before there is data in it.
 
 ## Layout

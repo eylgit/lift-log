@@ -1,0 +1,14 @@
+{
+  // Cloudflare Workers — static asset hosting for the built PWA.
+  // Deployed by Workers Builds on every push to main; see docs/lift-log-build-plan.md A4.
+  //
+  // "name" must match the Worker name in the Cloudflare dashboard or the build fails.
+  "name": "lift-log",
+  "compatibility_date": "2026-08-20",
+  "assets": {
+    // vite build writes here. Not committed — see .gitignore.
+    "directory": "./dist",
+    // Unknown paths return index.html with a 200 so client-side routing works.
+    "not_found_handling": "single-page-application"
+  }
+}

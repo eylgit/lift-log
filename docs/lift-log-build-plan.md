@@ -20,12 +20,13 @@ Do not redo this work.
 
 | | |
 | --- | --- |
-| Repository | Initialised locally, branch `main`, one commit `M0: deployable PWA skeleton`. **No remote yet.** |
+| Repository | `github.com/<user>/lift-log`, branch `main`, one commit `M0: deployable PWA skeleton`. **Private** until H3.3 — see *Visibility* below. |
 | Stack | Vite 5 · React 18 · TypeScript 5 · `vite-plugin-pwa` 0.21 |
 | Build | Verified green: `npm run typecheck && npm run build` produces `dist/` with a service worker |
 | Existing source | `src/plan.ts` (rotation, scheme, training-day rule), `src/App.tsx` (Today screen shell), `src/styles.css` (Blueprint palette), `public/` (PWA icons) |
 | CI | `.github/workflows/ci.yml` — typecheck + build on push and PR, Node 20 |
-| Tooling | `gh` CLI installed at `/usr/local/bin/gh`, **not authenticated**. Node 20 at `/opt/node20/bin` |
+| Deploy | `wrangler.jsonc` — assets-only Cloudflare Worker serving `dist/` from the root path |
+| Tooling | `gh` CLI installed at `/usr/local/bin/gh`, authenticated. Node 20 at `/opt/node20/bin` |
 
 ### Two environment facts that will waste an afternoon if unknown
 
@@ -33,6 +34,25 @@ Do not redo this work.
 - **`npm install` fails inside the VirtualBox shared folder** with an `EPERM` symlink error, because
   the share cannot create the symlinks npm puts in `node_modules/.bin`. Clone the repo onto the
   VM's own filesystem (e.g. `~/lift-log`) and develop there. Use the share for syncing only.
+
+### Visibility
+
+The repository is **private for the whole build and goes public as the last step of H3**. Nothing
+in Parts A–G depends on it being public:
+
+- **Cloudflare does not care.** Workers Builds installs a Cloudflare GitHub App with
+  per-repository access and builds on Cloudflare's own runners. Private repositories build and
+  deploy exactly the same way, and changing visibility later does not disturb the installation.
+- **GitHub Actions does not care.** CI runs on private repositories too; the only difference is that
+  the minutes are metered against the free-tier quota instead of being unlimited. At two steps per
+  push this is negligible.
+- **GitHub Pages (A5) is the exception.** Pages from a private repository requires a paid plan, so
+  A5 is unavailable while the repository is private. This is not a problem: A4 (Cloudflare) is the
+  recommended route anyway, and A4 and A5 are alternatives — you only do one.
+
+Because everything committed becomes world-readable at H3.3, the privacy rules in the project
+instructions apply from the first commit, not from the moment the switch is flipped. Do not treat
+the private window as a place to park things you would not publish.
 
 ---
 
@@ -87,47 +107,77 @@ rests between sides; the grouping is deliberate. See `lift-log-design.md` §1.
 
 - **A2.1** Confirm the working tree is clean and on `main`: `git status`, `git branch --show-current`.
 - **A2.2** Create the repository and push in one step:
-  `gh repo create lift-log --public --source=. --remote=origin --push`
+  `gh repo create lift-log --private --source=. --remote=origin --push`
   - **A2.2.1** If `lift-log` is taken on the account, pick another name and record it — it becomes
     the GitHub Pages base path in A5 and appears in the README.
-  - **A2.2.2** Public, not private: the commit history is part of the portfolio.
+  - **A2.2.2** Private for now. It goes public at H3.3, once the README, screenshots and ADRs are
+    in place and the repository reads the way you want a stranger to find it. The commit history is
+    part of the portfolio, so it is published in full — just not yet.
 - **A2.3** Verify: `gh repo view --web` opens the repository and the README renders.
 
 ## A3 — Confirm CI
 
+Leave `.github/workflows/ci.yml` as it is. It already does the right thing, and nothing later in
+the plan needs it changed.
+
 - **A3.1** Open the Actions tab; the `CI` workflow should have run on the push.
 - **A3.2** Confirm both steps pass: `npm run typecheck` and `npm run build`.
-- **A3.3** Add the CI badge to the top of `README.md`
-  (`![CI](https://github.com/<user>/lift-log/actions/workflows/ci.yml/badge.svg)`), commit, push,
-  and confirm it renders green.
 
-## A4 — Deploy to Cloudflare Pages *(recommended)*
+> **Reading CI from the CLI.** `gh run list` needs a token with the `actions: read` scope. A
+> fine-grained personal access token without it returns `HTTP 403: Resource not accessible by
+> personal access token`, which says nothing about whether the run passed. Either add the scope or
+> read the Actions tab in a browser — do not treat the 403 as a failing build.
+
+## A4 — Deploy to Cloudflare Workers *(recommended)*
 
 Chosen over GitHub Pages because it serves from the **root path**, which keeps the PWA manifest
 `start_url` and service-worker `scope` trivially correct.
 
+**Workers, not Pages.** Cloudflare's guidance is that new projects should use Workers: Pages keeps
+working and existing projects are unaffected, but all new investment goes to Workers, and the
+dashboard no longer offers a Pages option when creating a project. Workers serves static assets
+natively, so nothing here needs a server — the Worker is assets-only, with no script at all.
+
 - **A4.1** Create a free Cloudflare account at <https://dash.cloudflare.com/sign-up> and verify
   the email address.
-- **A4.2** In the dashboard: **Workers & Pages → Create → Pages → Connect to Git**.
-  - **A4.2.1** Authorise the Cloudflare GitHub app and grant it access to the `lift-log` repository
-    only, not the whole account.
-  - **A4.2.2** Select `lift-log` and choose the `main` branch as production.
-- **A4.3** Set the build configuration.
-  - **A4.3.1** Framework preset: `Vite` (or `None`).
-  - **A4.3.2** Build command: `npm run build`.
-  - **A4.3.3** Build output directory: `dist`.
-  - **A4.3.4** Environment variable: `NODE_VERSION` = `20`. **This is required** — the default is
-    older and the build will fail without it.
-- **A4.4** Save and deploy. Note the resulting URL, e.g. `lift-log.pages.dev`.
-- **A4.5** Record the URL in `README.md` and in the repository's About field
+- **A4.2** Commit `wrangler.jsonc` **before** connecting the repository. The deploy step runs
+  `npx wrangler deploy`, which reads this file; without it the first build fails.
+  - **A4.2.1** `name` must be **identical** to the Worker name in the dashboard, or the build fails
+    with a name mismatch. Both are `lift-log`.
+  - **A4.2.2** `assets.directory` is `./dist` — where `vite build` writes. `dist/` stays gitignored;
+    Cloudflare builds it, it is never committed.
+  - **A4.2.3** `not_found_handling: "single-page-application"` returns `index.html` with a 200 for
+    unknown paths, so client-side routing works.
+- **A4.3** In the dashboard: **Workers & Pages → Create application → Connect to Git**.
+  - **A4.3.1** Authorise the Cloudflare GitHub app and grant it access to the `lift-log` repository
+    only, not the whole account. A private repository is fine — the app has explicit access.
+  - **A4.3.2** Select `lift-log` and choose the `main` branch as production.
+  - **A4.3.3** Let Cloudflare create the API token it offers. It is scoped to deploying this Worker.
+- **A4.4** Set the build configuration.
+  - **A4.4.1** Project / Worker name: `lift-log` — must match `name` in `wrangler.jsonc`.
+  - **A4.4.2** Build command: `npm run build`.
+  - **A4.4.3** Deploy command: `npx wrangler deploy` (the default — leave it).
+  - **A4.4.4** Root directory: `/`.
+  - **A4.4.5** There is **no build-output-directory field** in this flow. That is not an omission;
+    `wrangler.jsonc` already says where the output is. Setting it in two places is what Pages did.
+  - **A4.4.6** Node version: the build image defaults to Node 24 and preinstalls 22 and 24. The
+    repository's `.nvmrc` says `20`, which is honoured but is not preinstalled. If the build fails
+    at the Node step, set the build variable `NODE_VERSION` = `22` and rerun. Do **not** pin below
+    20 — Node 18 has no global `crypto` and the PWA build needs it.
+- **A4.5** Save and deploy. Note the resulting URL, e.g. `lift-log.<subdomain>.workers.dev`.
+- **A4.6** Record the URL in `README.md` and in the repository's About field
   (`gh repo edit --homepage "<url>"`).
-- **A4.6** Push a trivial commit and confirm it redeploys automatically.
+- **A4.7** Push a trivial commit and confirm it redeploys automatically.
 
-> **Origin warning.** Browser storage is scoped to the exact origin. Moving from
-> `lift-log.pages.dev` to a custom domain later strands every existing log on the old origin; the
-> only route across is export-then-import. Decide the final URL before there is real data in it.
+> **Origin warning.** Browser storage is scoped to the exact origin. Moving from the `workers.dev`
+> URL to a custom domain later strands every existing log on the old origin; the only route across
+> is export-then-import. Decide the final URL before there is real data in it.
 
 ## A5 — Deploy to GitHub Pages *(alternative to A4 — do one, not both)*
+
+> **Not available while the repository is private** — Pages from a private repository needs a paid
+> plan. Take A4. This section is kept for the case where Cloudflare is ruled out and you are willing
+> to publish the repository early.
 
 - **A5.1** Repository **Settings → Pages → Source: GitHub Actions**.
 - **A5.2** Add `.github/workflows/pages.yml`:
@@ -151,7 +201,7 @@ Chosen over GitHub Pages because it serves from the **root path**, which keeps t
 
 ### Exit criteria — Part A
 
-- [ ] Public repository exists with the M0 commit and a green CI badge.
+- [ ] Private repository exists with the M0 commit, and CI passes on it.
 - [ ] A public URL serves the app, and pushing to `main` redeploys it.
 - [ ] The app is installed on the owner's phone and opens offline.
 - [ ] The final URL is recorded in the README and the repo homepage field.
@@ -507,11 +557,26 @@ everything after is improvement, not enablement.
 - **H3.1** Tag `v1.0.0` and write release notes.
 - **H3.2** Confirm the licence, the method credit and the health disclaimer appear in both the
   README and the in-app About screen.
+- **H3.3** **Go public.** This is the last irreversible step, and it is deliberately last.
+  - **H3.3.1** Before flipping: read the full history as a stranger would.
+    `git log --stat` and `git diff <first-commit> HEAD` — check for host paths, home-lab or network
+    detail, container names, credential filenames, tokens, keys and real email addresses. Publishing
+    exposes **every commit**, not just the current tree; a secret deleted in a later commit is still
+    there in the one that added it.
+  - **H3.3.2** Confirm `git log --format='%ae%n%ce' | sort -u` shows only the intended noreply
+    address.
+  - **H3.3.3** Flip it:
+    `gh repo edit <user>/lift-log --visibility public --accept-visibility-change-consequences`.
+  - **H3.3.4** Confirm the Cloudflare deploy still works: push a trivial commit and watch it
+    build. It should be untouched — the GitHub App installation survives a visibility change — but
+    verify rather than assume.
 
 ### Exit criteria — Part H
 - [ ] A stranger can understand what the app is and try it within ninety seconds of landing on the
       repository.
 - [ ] `v1.0.0` is tagged and the live URL runs that build.
+- [ ] The repository is public and the history has been read end to end for anything that should
+      not be.
 
 ---
 

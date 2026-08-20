@@ -343,7 +343,7 @@ in Capacitor over a weekend" and "rewrite it."
 | Charts | hand-written SVG | a sawtooth line and a heat map. A charting library is more code than the chart. |
 | Styling | plain CSS with custom properties | it's four screens; a design system is overhead |
 | Tests | Vitest + fast-check; Playwright for one E2E | fast property-based engine tests, thin UI tests |
-| Hosting | Cloudflare Pages or GitHub Pages | free, HTTPS (required for service workers), matches the open-source story |
+| Hosting | Cloudflare Workers (static assets) or GitHub Pages | free, HTTPS (required for service workers), matches the open-source story |
 | **Later: native** | **Capacitor** | wraps the *same web build* for iOS and Android. Not a rewrite. |
 
 ### 8.3 Considered and deferred
@@ -555,9 +555,8 @@ who gives it ninety seconds.
   target, why IndexedDB over localStorage, why no accounts, why web before native. Four or
   five paragraphs each. The cheapest, highest-signal way to show engineering *judgement*
   rather than just output.
-- Green CI badge, coverage badge on the engine.
 - MIT licence, CONTRIBUTING, issue templates, Conventional Commits, a real CHANGELOG, tagged
-  releases, light and dark screenshots, and a plain health disclaimer.
+  releases, screenshots, and a plain health disclaimer.
 
 ---
 
