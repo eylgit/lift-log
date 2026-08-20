@@ -20,8 +20,9 @@ can read.
 
 ## Status
 
-**The skeleton builds, installs to a home screen, and works offline.** There is no progression
-engine and no session runner yet — the Today screen renders a fixed rotation.
+**Live at <https://lift-log.green-sun-5a13.workers.dev/>** — installable to a home screen and
+works offline. There is no progression engine and no session runner yet: the Today screen renders
+a fixed rotation.
 
 Work is staged in ten parts. Each is self-contained and ends with a checklist to review before the
 next one starts. The full plan, with numbered steps, is
