@@ -215,6 +215,30 @@ describe("the log", () => {
     const log = await repo.readLog();
     expect(log).toEqual([{ session: await repo.getSession("s1"), sets: [] }]);
   });
+
+  it("pairs them correctly for a log too long to seek through", async () => {
+    // Past a threshold the implementation stops seeking to each session's sets
+    // and reads the table instead (see `setsOf`). Same answer either way, and
+    // this is the only test on the far side of it.
+    const count = 40;
+    for (let i = 0; i < count; i += 1) {
+      const id = `x${String(i).padStart(2, "0")}`;
+      await repo.appendSession(session({ id, trainingDay: `2026-09-${String(i + 1).padStart(2, "0")}` }));
+      await repo.appendSets(setsFor(id, i % 2 === 0 ? [0, 1] : [0]));
+    }
+    await repo.softDeleteSession("x00", AT);
+
+    const log = await repo.readLog();
+
+    expect(log).toHaveLength(count - 1);
+    expect(log.every((entry) => entry.sets.every((set) => set.sessionId === entry.session.id)))
+      .toBe(true);
+    expect(log.map((entry) => entry.sets.length)).toEqual(
+      Array.from({ length: count - 1 }, (_, i) => ((i + 1) % 2 === 0 ? 2 : 1)),
+    );
+    // The tombstoned session's sets are not in anyone else's bucket either.
+    expect(log.some((entry) => entry.session.id === "x00")).toBe(false);
+  });
 });
 
 /* ------------------------------------------------- closing out a session */

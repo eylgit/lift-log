@@ -47,6 +47,17 @@ import type { Settings } from "./types";
 const FIRST_DAY = "0000-00-00";
 const LAST_DAY = "9999-99-99";
 
+/**
+ * Above this many sessions, read the whole `setLog` table and group in memory
+ * rather than seeking to each session's sets. See `setsOf`.
+ *
+ * The number is not tuned; it only has to sit above what a screen asks for and
+ * below a year. Today (one session) and the history detail (one) are at the
+ * bottom of the range, and the log reads that matter — the export, the chart,
+ * replay — are hundreds.
+ */
+const SETS_BY_SCAN_FROM = 32;
+
 /** INV-3: a session with a tombstone is not there as far as any read cares. */
 function isLive(session: Session): boolean {
   return session.deletedAt === null;
@@ -241,12 +252,27 @@ class DexieRepo implements Repo {
       : this.db.session.toArray();
   }
 
-  /** The sets of several sessions in one query, grouped and ordered. */
+  /**
+   * The sets of several sessions in one query, grouped and ordered.
+   *
+   * Two strategies, because one of them falls off a cliff. `anyOf` reaches
+   * straight to the rows it wants, which is what a screen showing one session
+   * should do — but it repositions the cursor once per key, and asking for a
+   * year at a time turns that into hundreds of seeks through a table small
+   * enough to read whole. Measured on the B7.3 year (355 sessions, 2,126 sets)
+   * under `fake-indexeddb`: `anyOf` took 5.4 seconds and reading the table took
+   * 11 milliseconds. A real IndexedDB is faster at both, and the shape of the
+   * difference is the same.
+   *
+   * That matters here rather than in theory: `readLog()` with no query is the
+   * whole log, and replay asks for it on every import and every migration (C3).
+   */
   private async setsOf(sessionIds: readonly SessionId[]): Promise<Map<SessionId, SetLog[]>> {
-    const sets = await this.db.setLog
-      .where("sessionId")
-      .anyOf(sessionIds)
-      .toArray();
+    const wanted = new Set(sessionIds);
+    const sets =
+      sessionIds.length > SETS_BY_SCAN_FROM
+        ? (await this.db.setLog.toArray()).filter((set) => wanted.has(set.sessionId))
+        : await this.db.setLog.where("sessionId").anyOf(sessionIds).toArray();
     const bySession = new Map<SessionId, SetLog[]>();
     for (const set of sets) {
       const existing = bySession.get(set.sessionId);
