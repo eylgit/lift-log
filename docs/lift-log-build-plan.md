@@ -451,9 +451,9 @@ never really lifted.
 ### Exit criteria — Part C
 
 - [ ] Data survives a reload and an app restart.
-- [ ] Dropping `engineState` and calling `rebuildState()` reproduces it exactly.
+- [x] Dropping `engineState` and calling `rebuildState()` reproduces it exactly — `tests/rebuild.test.ts`, over the simulated year.
 - [ ] The round-trip test runs in CI and passes.
-- [ ] `grep -r dexie src/ --exclude-dir=db` returns nothing.
+- [x] `grep -r dexie src/ --exclude-dir=db` returns nothing — enforced by `tests/db-boundary.test.ts` (C2.3).
 
 ---
 
