@@ -7,7 +7,6 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { IDBFactory } from "fake-indexeddb";
 
 import {
   DEFAULT_EQUIPMENT,
@@ -19,11 +18,18 @@ import {
 } from "../src/db/schema";
 import { DEFAULT_STEP_KG, STALLS_BEFORE_DELOAD } from "../src/engine";
 
-/** A database per test, so nothing leaks between them. */
+/**
+ * A database per test, under a name no other test uses.
+ *
+ * Assigning a fresh `IDBFactory` to `globalThis.indexedDB` looks like the
+ * cleaner way to do this and does not work: Dexie reads that global once, at
+ * import, so every test would go on sharing the first factory and would start
+ * with whatever the previous test wrote.
+ */
+let dbCount = 0;
+
 function freshDb(): LiftLogDb {
-  // Replacing the factory wipes every database the previous test created.
-  globalThis.indexedDB = new IDBFactory();
-  return new LiftLogDb("lift-log-test");
+  return new LiftLogDb(`lift-log-test-${(dbCount += 1)}`);
 }
 
 let db: LiftLogDb;

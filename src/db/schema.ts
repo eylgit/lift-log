@@ -45,6 +45,23 @@ type Singleton = { readonly id: typeof SINGLETON_ID };
 export type EquipmentRow = Equipment & Singleton;
 export type SettingsRow = Settings & Singleton;
 
+/* -------------------------------------------------------------- rotation */
+
+/**
+ * An exercise, plus where it sits in the rotation.
+ *
+ * The position is stored here rather than on the engine's `Exercise` because
+ * the engine never asks what day it is — it is handed one lift and a history
+ * and answers for that lift (INV-6, §6). Which lift comes next is the shell's
+ * question, so the answer lives at the storage boundary.
+ *
+ * `order` is not indexed and does not need to be: five rows sort in memory
+ * faster than IndexedDB can open a cursor. That also means adding this field
+ * needed no schema version bump — IndexedDB stores whole objects and only the
+ * declared indexes are part of the version.
+ */
+export type ExerciseRow = Exercise & { readonly order: number };
+
 /* --------------------------------------------------------------- version */
 
 /**
@@ -88,7 +105,7 @@ const V1_STORES = {
  * engine consumes, with no separate persistence model to keep in step.
  */
 export class LiftLogDb extends Dexie {
-  declare exercise: EntityTable<Exercise, "id">;
+  declare exercise: EntityTable<ExerciseRow, "id">;
   declare equipment: EntityTable<EquipmentRow, "id">;
   declare settings: EntityTable<SettingsRow, "id">;
   declare session: EntityTable<Session, "id">;
