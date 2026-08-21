@@ -50,11 +50,26 @@ export type MovementPattern =
 export type Side = "left" | "right";
 
 /**
- * One lift in the rotation.
+ * One lift in the rotation, and the athlete's setup for it.
  *
- * Note what is *not* here: a per-exercise increment. How much to add on a clean
- * session is the athlete's step, the same for every lift (see Equipment, and
- * `lift-log-design.md` §6.1). A hinge would absorb a bigger jump than an
+ * The last two fields are the answers onboarding collects (G1.2, G1.3), and
+ * they are here rather than in `EngineState` for a reason worth stating once.
+ *
+ * `EngineState` is a cache: replay drops it and rebuilds it from the log (C3,
+ * INV-2). Neither of these values can be rebuilt that way. A start weight is
+ * the opening balance — replaying a log of additions without one gives the
+ * wrong total, and an untrained lift has no log at all to replay. A weak side
+ * is not a total of anything: no session changes it, and the engine only ever
+ * reads it. Both were homeless, and a cache is the one place a fact that
+ * cannot be recomputed must never live.
+ *
+ * They belong here because this type is already the athlete's setup rather
+ * than a fact or a derivation — see the header of this file. Storing them here
+ * is what lets `rebuildState()` mean what it says.
+ *
+ * Note what is still *not* here: a per-exercise increment. How much to add on a
+ * clean session is the athlete's step, the same for every lift (see Equipment,
+ * and `lift-log-design.md` §6.1). A hinge would absorb a bigger jump than an
  * overhead press does, but buying that costs a second number that disagrees
  * with the one on the screen.
  */
@@ -64,6 +79,21 @@ export type Exercise = {
   readonly pattern: MovementPattern;
   /** Search text for a form demo. The engine never fetches anything (INV-9). */
   readonly videoQuery: string;
+  /**
+   * Where this lift starts, in kg, until a session has been logged for it.
+   *
+   * Onboarding defaults all five to a single step and says start absurdly light
+   * (G1.2); it is tap-editable like every other weight (INV-7). After the first
+   * completed session it stops mattering — the log takes over — but it is kept
+   * rather than consumed, because replay starts from the beginning every time.
+   */
+  readonly startKg: number;
+  /**
+   * Trained first, while fresh, and it sets the standard for both sides
+   * (`lift-log-design.md` §6.4). Onboarding asks, with "I don't know" defaulting
+   * to the left, and tapping it flips it (INV-7).
+   */
+  readonly weakSide: Side;
 };
 
 /* ------------------------------------------------------------- equipment */
@@ -187,9 +217,16 @@ export type Prescription = {
 /**
  * A derived cache, not a source of truth.
  *
- * Everything here can be rebuilt by replaying the whole log, and C3 does
- * exactly that after every import and migration. If a rebuild ever disagrees
- * with the cache, the cache is wrong — never the log.
+ * Every field here can be rebuilt from the exercise's `startKg` and the log,
+ * and C3 does exactly that after every import and migration. If a rebuild ever
+ * disagrees with the cache, the cache is wrong — never the log.
+ *
+ * `weakSide` used to be here and is now on `Exercise`. It never belonged: no
+ * session moves it, `applyOutcome` only ever copied it through, and a value
+ * that cannot be recomputed cannot live in the table replay throws away. Its
+ * one reader, `prescribe`, is handed the exercise anyway. The rule this leaves
+ * behind is worth keeping: nothing joins this type unless replay can produce
+ * it, because everything here is deleted on a regular basis.
  */
 export type EngineState = {
   readonly exerciseId: ExerciseId;
@@ -203,5 +240,4 @@ export type EngineState = {
   readonly currentKg: number;
   /** Consecutive failed sessions. Three triggers the deload (B5). */
   readonly stallCount: number;
-  readonly weakSide: Side;
 };

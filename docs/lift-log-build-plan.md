@@ -229,8 +229,10 @@ part; build it before any UI.
 
 ## B2 — Types and the data model
 
-- **B2.1** Define `Exercise` — id, name, movement pattern, `videoQuery`. No per-exercise
-  increment: the step is the increment (B3).
+- **B2.1** Define `Exercise` — id, name, movement pattern, `videoQuery`, `startKg`, `weakSide`. No
+  per-exercise increment: the step is the increment (B3). The last two fields were added in C3.0 —
+  they are onboarding's answers (G1.2, G1.3), and they live here rather than in `EngineState`
+  because replay drops that table and neither value can be recomputed from the log. See C3.0.
 - **B2.2** Define `Equipment` as `{ stepKg }` — one number: how much the athlete **intends** to add
   on a clean session. `DEFAULT_STEP_KG` is 1.
   - **B2.2.1** Not a union over dumbbell types, and not a plate inventory — a settings screen that
@@ -254,9 +256,11 @@ part; build it before any UI.
   actualKg, status, note, deletedAt }`. `status` ∈ `planned | complete | abandoned`.
   `deletedAt` is the tombstone (INV-3).
 - **B2.5** Define `Prescription` — `{ exercise, weightKg, repsPerSide, sets, restMinutes, weakSide }`.
-- **B2.6** Define `EngineState` — `{ exerciseId, currentKg, stallCount, weakSide }`. `currentKg` is
-  the weight to prescribe next, always a whole multiple of the step. Document in a comment that this
-  is a **derived cache** and can always be rebuilt (INV-2).
+- **B2.6** Define `EngineState` — `{ exerciseId, currentKg, stallCount }`. `currentKg` is
+  the weight to prescribe next. (Not "a whole multiple of the step": B2.2.2 removed the grid, so it
+  is a start weight or a lifted weight plus or minus whole steps.) Document in a comment that this
+  is a **derived cache** and can always be rebuilt (INV-2). `weakSide` was here until C3.0 and moved
+  to `Exercise`; nothing may join this type unless replay can produce it.
 
 ## B3 — The step is the increment
 
@@ -413,8 +417,16 @@ never really lifted.
 
 ## C3 — Replay
 
-- **C3.1** Implement `rebuildState()`: clear `engineState`, read the whole log in order, feed it
-  through the Part B engine, write the result back.
+- **C3.0** *(added during C3.)* Give replay an opening balance. `rebuildState()` cannot start from
+  nothing: an untrained lift has no log to replay, and the start weight it needs was being kept in
+  `engineState` — the very table replay clears. `weakSide` had the same problem and a worse one, in
+  that no session derives it at all. Move both onto `Exercise` (B2.1), drop `weakSide` from
+  `EngineState` (B2.6) and have `prescribe` read it from the exercise it is already handed. Add
+  `initialState(exercise)` to the engine as the seed. No schema version bump: neither field is
+  indexed, and IndexedDB versions only the indexes (see C1.3 and the `order` field).
+- **C3.1** Implement `rebuildState()`: clear `engineState`, seed each exercise with
+  `initialState()`, read the whole log in order, feed it through the Part B engine, write the result
+  back.
 - **C3.2** Call it after every import and every migration.
 - **C3.3** Test: seed a log, snapshot `engineState`, drop the table, rebuild, assert identical.
 

@@ -125,7 +125,7 @@ describe.each(perLift)("%s", (_name, lift) => {
     const first = lift.points[0]!;
     const last = lift.points[lift.points.length - 1]!;
     expect(last.weightKg).toBeGreaterThan(first.weightKg);
-    expect(first.weightKg).toBe(lift.startKg);
+    expect(first.weightKg).toBe(lift.exercise.startKg);
   });
 
   it("makes each tooth taller than the one before it", () => {
@@ -168,7 +168,7 @@ describe.each(perLift)("%s", (_name, lift) => {
     // steps away from where the lift started.
     const step = run.equipment.stepKg;
     for (const point of lift.points) {
-      const steps = (point.weightKg - lift.startKg) / step;
+      const steps = (point.weightKg - lift.exercise.startKg) / step;
       expect(Math.abs(steps - Math.round(steps))).toBeLessThan(1e-9);
     }
   });
@@ -250,7 +250,7 @@ describe("the chart", () => {
       lifts: lifts.map((lift) => ({
         id: lift.exercise.id,
         name: lift.exercise.name,
-        startKg: lift.startKg,
+        startKg: lift.exercise.startKg,
         endKg: lift.points[lift.points.length - 1]!.weightKg,
         deloads: lift.deloads.length,
         points: lift.points.map((p) => ({

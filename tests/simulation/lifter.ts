@@ -41,6 +41,7 @@
 import {
   DEFAULT_STEP_KG,
   applyOutcome,
+  initialState,
   prescribe,
 } from "../../src/engine";
 import type {
@@ -51,7 +52,6 @@ import type {
   ExerciseId,
   Session,
   SetLog,
-  Side,
   TrainingDay,
 } from "../../src/engine";
 
@@ -99,61 +99,53 @@ const OVERLOAD_PER_REP = 0.025;
 const TARGET_REPS = 5;
 const SETS_PER_SESSION = 3;
 
-/** The rotation, with the start weights the app ships as suggestions. */
-type Lift = {
-  readonly exercise: Exercise;
-  readonly startKg: number;
-  readonly weakSide: Side;
-};
-
-const ROTATION: readonly Lift[] = [
+/**
+ * The rotation, with the start weights and weak sides the app ships as
+ * suggestions.
+ *
+ * These used to be a `Lift` wrapper around the exercise, because `Exercise`
+ * had nowhere to put them and `EngineState` was seeded by hand. Both now live
+ * on the exercise itself (C3.0), so the wrapper is gone and this is the same
+ * shape the app stores.
+ */
+const ROTATION: readonly Exercise[] = [
   {
-    exercise: {
-      id: "split-squat",
-      name: "Bulgarian Split Squat",
-      pattern: "squat",
-      videoQuery: "bulgarian split squat dumbbell form",
-    },
+    id: "split-squat",
+    name: "Bulgarian Split Squat",
+    pattern: "squat",
+    videoQuery: "bulgarian split squat dumbbell form",
     startKg: 30,
     weakSide: "left",
   },
   {
-    exercise: {
-      id: "press",
-      name: "Single-Arm Shoulder Press",
-      pattern: "vertical push",
-      videoQuery: "single arm dumbbell shoulder press form",
-    },
+    id: "press",
+    name: "Single-Arm Shoulder Press",
+    pattern: "vertical push",
+    videoQuery: "single arm dumbbell shoulder press form",
     startKg: 17.5,
     weakSide: "left",
   },
   {
-    exercise: {
-      id: "deadlift",
-      name: "Single-Leg Deadlift",
-      pattern: "hip hinge",
-      videoQuery: "single leg romanian deadlift dumbbell form",
-    },
+    id: "deadlift",
+    name: "Single-Leg Deadlift",
+    pattern: "hip hinge",
+    videoQuery: "single leg romanian deadlift dumbbell form",
     startKg: 32.5,
     weakSide: "right",
   },
   {
-    exercise: {
-      id: "bench",
-      name: "Single-Arm Bench Press",
-      pattern: "horizontal push",
-      videoQuery: "single arm dumbbell bench press form",
-    },
+    id: "bench",
+    name: "Single-Arm Bench Press",
+    pattern: "horizontal push",
+    videoQuery: "single arm dumbbell bench press form",
     startKg: 22.5,
     weakSide: "left",
   },
   {
-    exercise: {
-      id: "row",
-      name: "Single-Arm Row",
-      pattern: "horizontal pull",
-      videoQuery: "single arm dumbbell row form",
-    },
+    id: "row",
+    name: "Single-Arm Row",
+    pattern: "horizontal pull",
+    videoQuery: "single arm dumbbell row form",
     startKg: 27.5,
     weakSide: "left",
   },
@@ -164,7 +156,7 @@ const ROTATION: readonly Lift[] = [
  * with, on this day. The fixed curve, and the only thing the simulation knows
  * that the engine does not.
  */
-function capacityKg(lift: Lift, day: number): number {
+function capacityKg(lift: Exercise, day: number): number {
   const start = lift.startKg + HEADROOM_KG;
   const fast = start * FAST_GAIN_FRACTION * (1 - Math.exp(-day / FAST_GAIN_TAU_DAYS));
   const slow = SLOW_GAIN_KG_PER_YEAR * (day / YEAR_DAYS);
@@ -196,7 +188,6 @@ export type SimDeload = Deload & {
 
 export type SimLift = {
   readonly exercise: Exercise;
-  readonly startKg: number;
   /** The capacity curve, sampled on every day of the year. For the chart. */
   readonly capacityKg: readonly number[];
 };
@@ -236,16 +227,9 @@ function trained(day: number): boolean {
 export function simulate(
   equipment: Equipment = { stepKg: DEFAULT_STEP_KG },
 ): SimResult {
+  // The same seed the app uses: replay starts every lift here (C3.1).
   const states = new Map<ExerciseId, EngineState>(
-    ROTATION.map((lift) => [
-      lift.exercise.id,
-      {
-        exerciseId: lift.exercise.id,
-        currentKg: lift.startKg,
-        stallCount: 0,
-        weakSide: lift.weakSide,
-      },
-    ]),
+    ROTATION.map((lift) => [lift.id, initialState(lift)]),
   );
 
   const sessions: Session[] = [];
@@ -263,8 +247,8 @@ export function simulate(
     const lift = ROTATION[position % ROTATION.length]!;
     position += 1;
 
-    const state = states.get(lift.exercise.id)!;
-    const prescription = prescribe(state, lift.exercise);
+    const state = states.get(lift.id)!;
+    const prescription = prescribe(state, lift);
     const weightKg = prescription.weightKg;
 
     const trainingDay = dayOf(day);
@@ -287,7 +271,7 @@ export function simulate(
         id: `${sessionId}-${ordinal}`,
         sessionId,
         ordinal,
-        side: weak ? state.weakSide : state.weakSide === "left" ? "right" : "left",
+        side: weak ? lift.weakSide : lift.weakSide === "left" ? "right" : "left",
         targetReps: TARGET_REPS,
         doneReps: repsFor(weightKg, capacity),
         loggedAt: `${trainingDay}T08:${String(2 + ordinal * 5).padStart(2, "0")}:00.000Z`,
@@ -296,7 +280,7 @@ export function simulate(
 
     const session: Session = {
       id: sessionId,
-      exerciseId: lift.exercise.id,
+      exerciseId: lift.id,
       startedAt: `${trainingDay}T08:00:00.000Z`,
       finishedAt: abandoned ? null : `${trainingDay}T08:32:00.000Z`,
       trainingDay,
@@ -307,7 +291,7 @@ export function simulate(
       deletedAt: null,
     };
 
-    const history = sessions.filter((s) => s.exerciseId === lift.exercise.id);
+    const history = sessions.filter((s) => s.exerciseId === lift.id);
     const outcome = applyOutcome(state, equipment, session, sessionSets, history);
 
     sessions.push(session);
@@ -315,14 +299,13 @@ export function simulate(
     if (outcome.deload !== null) {
       deloads.push({ ...outcome.deload, trainingDay, sessionId });
     }
-    states.set(lift.exercise.id, outcome.state);
+    states.set(lift.id, outcome.state);
   }
 
   return {
     equipment,
     lifts: ROTATION.map((lift) => ({
-      exercise: lift.exercise,
-      startKg: lift.startKg,
+      exercise: lift,
       capacityKg: Array.from({ length: YEAR_DAYS }, (_, day) => capacityKg(lift, day)),
     })),
     sessions,

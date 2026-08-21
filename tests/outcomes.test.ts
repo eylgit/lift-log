@@ -28,7 +28,7 @@ const PRESS = "press";
 const kit = (stepKg: number): Equipment => ({ stepKg });
 
 function stateFor(currentKg: number, stallCount = 0): EngineState {
-  return { exerciseId: PRESS, currentKg, stallCount, weakSide: "left" };
+  return { exerciseId: PRESS, currentKg, stallCount };
 }
 
 /** A session as the app would write it: trained, all sets logged. */

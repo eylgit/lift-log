@@ -12,6 +12,7 @@ import fc from "fast-check";
 
 import {
   SESSION_SCHEME,
+  initialState,
   nextWeight,
   prescribe,
 } from "../src/engine/progression";
@@ -22,6 +23,8 @@ const PRESS: Exercise = {
   name: "Single-Arm Shoulder Press",
   pattern: "vertical push",
   videoQuery: "single arm dumbbell shoulder press form",
+  startKg: 17.5,
+  weakSide: "left",
 };
 
 const ROW: Exercise = {
@@ -29,10 +32,12 @@ const ROW: Exercise = {
   name: "Single-Arm Row",
   pattern: "horizontal pull",
   videoQuery: "single arm dumbbell row form",
+  startKg: 27.5,
+  weakSide: "right",
 };
 
 function stateFor(exercise: Exercise, currentKg: number): EngineState {
-  return { exerciseId: exercise.id, currentKg, stallCount: 0, weakSide: "left" };
+  return { exerciseId: exercise.id, currentKg, stallCount: 0 };
 }
 
 const kit = (stepKg: number): Equipment => ({ stepKg });
@@ -150,9 +155,11 @@ describe("prescribe", () => {
     }).toEqual({ ...SESSION_SCHEME });
   });
 
-  it("puts the weak side first", () => {
-    expect(prescribe({ ...state, weakSide: "right" }, PRESS).weakSide).toBe("right");
-    expect(prescribe({ ...state, weakSide: "left" }, PRESS).weakSide).toBe("left");
+  it("puts the weak side first, reading it from the exercise", () => {
+    // Not from the state: the weak side is setup the athlete chose, and the
+    // state holds only what replay can recompute (C3.0).
+    expect(prescribe(state, { ...PRESS, weakSide: "right" }).weakSide).toBe("right");
+    expect(prescribe(state, { ...PRESS, weakSide: "left" }).weakSide).toBe("left");
   });
 
   it("refuses a state belonging to another exercise", () => {
@@ -165,5 +172,35 @@ describe("prescribe", () => {
     // Nothing rounds or snaps it: the step is what the athlete intends to add,
     // not a claim about which weights the rack can make.
     expect(prescribe(stateFor(PRESS, 17.3), PRESS).weightKg).toBe(17.3);
+  });
+});
+
+describe("initialState", () => {
+  it("starts a fresh lift at its start weight, with no stalls", () => {
+    expect(initialState(PRESS)).toEqual({
+      exerciseId: "press",
+      currentKg: 17.5,
+      stallCount: 0,
+    });
+  });
+
+  it("carries nothing the log could not put back", () => {
+    // The point of C3.0: every field here is something replay can recompute,
+    // so dropping the table and rebuilding it is an honest test rather than a
+    // copy forward. A weak side in this object would break that.
+    expect(Object.keys(initialState(PRESS)).sort()).toEqual([
+      "currentKg",
+      "exerciseId",
+      "stallCount",
+    ]);
+  });
+
+  it("rounds a hand-typed start weight like every other weight", () => {
+    expect(initialState({ ...PRESS, startKg: 17.499 }).currentKg).toBe(17.5);
+  });
+
+  it("is the weight a never-trained lift is prescribed", () => {
+    // `lift-log-design.md` §6.6: empty history prescribes the start weight.
+    expect(prescribe(initialState(ROW), ROW).weightKg).toBe(ROW.startKg);
   });
 });

@@ -21,9 +21,11 @@ import type { EngineState, Exercise, Session, SetLog } from "../src/engine";
 /* ------------------------------------------------------------- fixtures */
 
 const ROTATION: readonly Exercise[] = [
-  { id: "split-squat", name: "Bulgarian Split Squat", pattern: "squat", videoQuery: "split squat" },
-  { id: "press", name: "Single-Arm Shoulder Press", pattern: "vertical push", videoQuery: "press" },
-  { id: "deadlift", name: "Single-Leg Deadlift", pattern: "hip hinge", videoQuery: "sldl" },
+  // `startKg` and `weakSide` are onboarding's answers and ride on the exercise
+  // row, because the cache they used to live in gets dropped by replay (C3.0).
+  { id: "split-squat", name: "Bulgarian Split Squat", pattern: "squat", videoQuery: "split squat", startKg: 30, weakSide: "left" },
+  { id: "press", name: "Single-Arm Shoulder Press", pattern: "vertical push", videoQuery: "press", startKg: 17.5, weakSide: "left" },
+  { id: "deadlift", name: "Single-Leg Deadlift", pattern: "hip hinge", videoQuery: "sldl", startKg: 32.5, weakSide: "right" },
 ];
 
 /** A session as the app writes it at Start: planned, nothing logged yet. */
@@ -333,7 +335,6 @@ describe("the engine cache", () => {
     exerciseId,
     currentKg,
     stallCount: 0,
-    weakSide: "left",
   });
 
   it("writes, reads back and overwrites by exercise", async () => {

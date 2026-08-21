@@ -326,7 +326,7 @@ Three stores. In the browser these are IndexedDB tables (§9.1); in the native a
 SQLite tables. Same shape, same code above them.
 
 ```
-exercise      id, name, pattern, videoQuery
+exercise      id, name, pattern, videoQuery, startKg, weakSide
 equipment     stepKg
 settings      units, restTargetS, stallThreshold, lastExportedAt, schemaVersion
 
@@ -334,12 +334,20 @@ session       id, exerciseId, startedAt, finishedAt, trainingDay,
               prescribedKg, actualKg, status, note
 setLog        id, sessionId, ordinal, side, targetReps, doneReps, loggedAt
 
-engineState   exerciseId, currentKg, stallCount, weakSide    ← CACHE ONLY
+engineState   exerciseId, currentKg, stallCount               ← CACHE ONLY
 ```
 
 `session` and `setLog` are append-only and are the truth. `engineState` is a derived cache
 with a `rebuildState()` that drops it and replays the entire log through the engine. Call it
 after every import and every migration, and exercise it in tests.
+
+`startKg` and `weakSide` sit on `exercise` for that reason. They are onboarding's two answers
+(§6.6, and the weak side in §6.4), and neither can be recovered by replaying a log: a start
+weight is the opening balance the replay adds to, and an untrained lift has no sessions to add;
+a weak side is not a total of anything, since no session moves it and the engine only reads it.
+They were in `engineState` until C3.0, which is to say they were in the one table that gets
+deleted on purpose. The rule they leave behind: **nothing joins `engineState` unless replay can
+produce it.**
 
 **The architectural test:** if you can delete a table and rebuild it exactly from the log, the
 architecture is honest. A few hundred sessions a year replays in under a millisecond — no

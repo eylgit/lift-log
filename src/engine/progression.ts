@@ -1,9 +1,9 @@
 /**
  * The prescription (B4).
  *
- * Two functions, and neither is clever — which is the point. The hard thinking
- * happened in `weights.ts`: because a weight only ever got where it is by
- * adding whole steps to a weight that already was one, "what should I lift
+ * Three functions, and none of them is clever — which is the point. The hard
+ * thinking happened in `weights.ts`: because a weight only ever got where it is
+ * by adding whole steps to a weight that already was one, "what should I lift
  * today" is addition and a struct literal. Nothing here snaps, clamps or
  * corrects, because there is nothing left to correct.
  *
@@ -70,6 +70,33 @@ export function nextWeight(
 }
 
 /**
+ * Where a lift stands before it has ever been trained.
+ *
+ * This is replay's opening balance (C3.1). `rebuildState()` starts every
+ * exercise here and folds the whole log in from the beginning, which is only
+ * possible because `startKg` is stored on the exercise rather than in the cache
+ * being rebuilt — see the note on `EngineState`.
+ *
+ * It belongs in the engine rather than in `src/db/` because "where does a lift
+ * start" is a progression question. Keeping it here leaves the replay as glue —
+ * read, fold, write — with no arithmetic of its own to get wrong.
+ *
+ * The weight goes through `roundKg` for the same reason every other weight
+ * does: a hand-typed start weight is the one number in the system a human
+ * enters directly, and it should be stored at the precision everything else
+ * compares at. What is *not* done here is clamping a very light start up to one
+ * step (`lift-log-design.md` §6.6) — that edge case is about what gets
+ * prescribed, and no weight is clamped anywhere yet.
+ */
+export function initialState(exercise: Exercise): EngineState {
+  return {
+    exerciseId: exercise.id,
+    currentKg: roundKg(exercise.startKg),
+    stallCount: 0,
+  };
+}
+
+/**
  * What to do today: the weight, the session shape, and which side goes first.
  *
  * The weight is `state.currentKg` passed straight through — no rounding, no
@@ -93,8 +120,9 @@ export function prescribe(state: EngineState, exercise: Exercise): Prescription 
     sets: SESSION_SCHEME.sets,
     restMinutes: SESSION_SCHEME.restMinutes,
     // Weak side first, while fresh, and it sets the standard for both
-    // (`lift-log-design.md` §6.4).
-    weakSide: state.weakSide,
+    // (`lift-log-design.md` §6.4). Read from the exercise, which is where the
+    // athlete set it — the state carries only what replay can recompute.
+    weakSide: exercise.weakSide,
   };
 }
 
