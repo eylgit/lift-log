@@ -31,9 +31,10 @@ import type {
   SessionId,
   SetLog,
 } from "../engine";
+import { rebuildIfMigrated } from "./replay";
 import type { LoggedSession, Repo, SessionOutcome, SessionQuery } from "./repo";
 import type { EquipmentRow, SettingsRow } from "./schema";
-import { LiftLogDb, SINGLETON_ID, ensureDefaults } from "./schema";
+import { LiftLogDb, SCHEMA_VERSION, SINGLETON_ID, ensureDefaults } from "./schema";
 import type { Settings } from "./types";
 
 /* --------------------------------------------------------------- helpers */
@@ -283,13 +284,22 @@ export function createDexieRepo(db: LiftLogDb): Repo {
 }
 
 /**
- * Open the database, seed the setup rows if this is a fresh install, and hand
- * back the repository. This is the app's one entry point to storage; nothing
- * else should ever construct a `LiftLogDb`.
+ * Open the database, seed the setup rows if this is a fresh install, rebuild
+ * the engine cache if a migration has happened, and hand back the repository.
+ * This is the app's one entry point to storage; nothing else should ever
+ * construct a `LiftLogDb`.
+ *
+ * The rebuild is here rather than left to the caller because there is no
+ * useful moment between opening the database and using it, and a cache built
+ * by an older version of the progression rules is exactly the kind of wrong
+ * that never announces itself (C3.2). On a fresh install and on every ordinary
+ * open it is one read of the settings row and nothing else.
  */
 export async function openDexieRepo(name?: string): Promise<Repo> {
   const db = new LiftLogDb(name);
   await db.open();
   await ensureDefaults(db);
-  return createDexieRepo(db);
+  const repo = createDexieRepo(db);
+  await rebuildIfMigrated(repo, SCHEMA_VERSION);
+  return repo;
 }

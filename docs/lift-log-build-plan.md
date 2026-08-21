@@ -427,7 +427,14 @@ never really lifted.
 - **C3.1** Implement `rebuildState()`: clear `engineState`, seed each exercise with
   `initialState()`, read the whole log in order, feed it through the Part B engine, write the result
   back.
-- **C3.2** Call it after every import and every migration.
+- **C3.2** Call it after every import and every migration. The migration half is
+  `rebuildIfMigrated(repo, SCHEMA_VERSION)`, run by `openDexieRepo` on every open: if the stored
+  `settings.schemaVersion` (C1.4) is behind, the cache was filled by an older version's rules, so
+  it is rebuilt and the version is written **after** the rebuild succeeds — a failed rebuild must
+  leave the database looking un-migrated so the next open retries. The trigger is the stored
+  version rather than a Dexie `upgrade()` hook, because that survives the swap to SQLite (Part J)
+  and also catches a database that arrived with data already in it. The import half is C4.3, which
+  calls `rebuildState` unconditionally: it replaces every table, so there is nothing to check.
 - **C3.3** Test: seed a log, snapshot `engineState`, drop the table, rebuild, assert identical.
 
 ## C4 — Export and import

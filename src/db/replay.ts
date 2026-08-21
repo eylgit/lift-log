@@ -87,3 +87,39 @@ export async function rebuildState(repo: Repo): Promise<readonly EngineState[]> 
   await repo.putEngineState(rebuilt);
   return rebuilt;
 }
+
+/**
+ * Rebuild the cache if the database was written by an older version of the app
+ * (C3.2). Returns the new states, or `null` if there was nothing to do.
+ *
+ * A migration is exactly the moment a cache becomes untrustworthy. The rules
+ * that filled it were the *old* version's rules, and a schema change is the
+ * usual sign those rules moved — so the cheapest honest thing to do is throw
+ * the derived rows away and work them out again with the code that is running
+ * now. That costs a few hundred rows of arithmetic, once, on the first open
+ * after an update.
+ *
+ * The trigger is the stored `settings.schemaVersion` (C1.4) rather than a hook
+ * on Dexie's `upgrade()`. Two reasons. It survives the swap to SQLite, where
+ * there is no Dexie to hook. And it catches the case an upgrade hook cannot:
+ * a database that arrived with data in it, from an import or a restored
+ * profile, whose cache was built somewhere else entirely.
+ *
+ * `importJson` does not go through here — it replaces every table, so it calls
+ * `rebuildState` unconditionally (C4.3). This is only for the version that
+ * changed underneath data that stayed.
+ */
+export async function rebuildIfMigrated(
+  repo: Repo,
+  currentVersion: number,
+): Promise<readonly EngineState[] | null> {
+  const settings = await repo.getSettings();
+  if (settings.schemaVersion >= currentVersion) return null;
+
+  const rebuilt = await rebuildState(repo);
+  // Last, and only on success: if the rebuild throws, the version stays behind
+  // and the next open tries again. Marking the database migrated before the
+  // cache is actually correct would make the failure permanent and silent.
+  await repo.saveSettings({ schemaVersion: currentVersion });
+  return rebuilt;
+}

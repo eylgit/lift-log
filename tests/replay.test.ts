@@ -13,9 +13,10 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { openDexieRepo } from "../src/db/dexie-repo";
-import { rebuildState } from "../src/db/replay";
+import { createDexieRepo, openDexieRepo } from "../src/db/dexie-repo";
+import { rebuildIfMigrated, rebuildState } from "../src/db/replay";
 import type { Repo } from "../src/db/repo";
+import { LiftLogDb, SCHEMA_VERSION } from "../src/db/schema";
 import type { Exercise, Session, SetLog } from "../src/engine";
 import { STALLS_BEFORE_DELOAD } from "../src/engine";
 
@@ -270,5 +271,92 @@ describe("the awkward rows", () => {
 
     expect(rebuilt.map((s) => s.exerciseId)).toEqual(["row"]);
     await expect(stateOf("press")).resolves.toBeUndefined();
+  });
+});
+
+/* ------------------------------------------------------- C3.2 · the seam */
+
+describe("rebuilding after a migration", () => {
+  it("does nothing when the database is already current", async () => {
+    await replay([logged(0, { actualKg: 20 })]);
+    // A cache that disagrees with the log, left alone on purpose: nothing has
+    // migrated, so nothing is rebuilt, and the wrong row survives to prove it.
+    await repo.putEngineState([{ exerciseId: "press", currentKg: 999, stallCount: 7 }]);
+
+    await expect(rebuildIfMigrated(repo, SCHEMA_VERSION)).resolves.toBeNull();
+    await expect(stateOf("press")).resolves.toMatchObject({ currentKg: 999 });
+  });
+
+  it("rebuilds when the data was written by an older version", async () => {
+    await replay([logged(0, { actualKg: 20 })]);
+    await repo.putEngineState([{ exerciseId: "press", currentKg: 999, stallCount: 7 }]);
+    // As if the app had just been updated over an older install.
+    await repo.saveSettings({ schemaVersion: SCHEMA_VERSION - 1 });
+
+    const rebuilt = await rebuildIfMigrated(repo, SCHEMA_VERSION);
+
+    expect(rebuilt).not.toBeNull();
+    await expect(stateOf("press")).resolves.toEqual({
+      exerciseId: "press",
+      currentKg: 22.5,
+      stallCount: 0,
+    });
+  });
+
+  it("records the new version, so the next open is a no-op", async () => {
+    await repo.saveSettings({ schemaVersion: SCHEMA_VERSION - 1 });
+
+    await rebuildIfMigrated(repo, SCHEMA_VERSION);
+
+    await expect(repo.getSettings()).resolves.toMatchObject({
+      schemaVersion: SCHEMA_VERSION,
+    });
+    await expect(rebuildIfMigrated(repo, SCHEMA_VERSION)).resolves.toBeNull();
+  });
+
+  it("runs on open, so nothing has to remember to call it", async () => {
+    // The same database, closed and opened again the way the app does it.
+    const name = `lift-log-replay-reopen-${(dbCount += 1)}`;
+    const first = await openDexieRepo(name);
+    await first.saveRotation([PRESS, ROW]);
+    await first.saveEquipment({ stepKg: STEP });
+    const { session, sets } = logged(0, { actualKg: 20 });
+    await first.appendSession(session);
+    await first.appendSets(sets);
+    await first.putEngineState([{ exerciseId: "press", currentKg: 999, stallCount: 7 }]);
+    await first.saveSettings({ schemaVersion: SCHEMA_VERSION - 1 });
+
+    const reopened = await openDexieRepo(name);
+
+    await expect(reopened.getEngineState("press")).resolves.toEqual({
+      exerciseId: "press",
+      currentKg: 22.5,
+      stallCount: 0,
+    });
+  });
+
+  it("leaves the version behind when the rebuild fails", async () => {
+    // A repository whose cache write throws, standing in for a database that
+    // fails mid-rebuild. The version must not move: the next open has to try
+    // again rather than trust a cache that was never finished.
+    const broken: Repo = {
+      ...createDexieRepo(new LiftLogDb(`lift-log-replay-broken-${(dbCount += 1)}`)),
+      getSettings: repo.getSettings.bind(repo),
+      saveSettings: repo.saveSettings.bind(repo),
+      listExercises: repo.listExercises.bind(repo),
+      getEquipment: repo.getEquipment.bind(repo),
+      readLog: repo.readLog.bind(repo),
+      clearEngineState: async () => {},
+      putEngineState: async () => {
+        throw new Error("disk is full");
+      },
+    };
+    await repo.saveSettings({ schemaVersion: SCHEMA_VERSION - 1 });
+
+    await expect(rebuildIfMigrated(broken, SCHEMA_VERSION)).rejects.toThrow(/disk is full/);
+
+    await expect(repo.getSettings()).resolves.toMatchObject({
+      schemaVersion: SCHEMA_VERSION - 1,
+    });
   });
 });
