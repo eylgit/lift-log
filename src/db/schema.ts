@@ -24,30 +24,10 @@ import type {
   SetLog,
 } from "../engine";
 import { DEFAULT_STEP_KG, SESSION_SCHEME, STALLS_BEFORE_DELOAD } from "../engine";
+import type { Settings } from "./types";
 
-/* -------------------------------------------------------------- settings */
-
-/** Kilograms are what gets stored; pounds are a display conversion (§6.6). */
-export type Units = "kg" | "lb";
-
-/**
- * The app's preferences. One row, and the row is the whole of it.
- *
- * `stallThreshold` duplicates the engine's `STALLS_BEFORE_DELOAD` constant on
- * purpose: the engine keeps a default it can reason about with no database
- * present, and this is where the athlete's override will live once the settings
- * screen exists (G3). Until then it is written with the engine's value and read
- * back unchanged.
- */
-export type Settings = {
-  readonly units: Units;
-  readonly restTargetS: number;
-  readonly stallThreshold: number;
-  /** ISO instant of the last successful export, or null if never (F3). */
-  readonly lastExportedAt: string | null;
-  /** What version of this schema wrote the data. Also goes in the export (C4). */
-  readonly schemaVersion: number;
-};
+/** Re-exported so `schema.ts` remains the one import for anything row-shaped. */
+export type { Settings, Units } from "./types";
 
 /* ------------------------------------------------------------ singletons */
 
