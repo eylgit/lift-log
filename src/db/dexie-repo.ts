@@ -246,6 +246,45 @@ class DexieRepo implements Repo {
     return { exercises, equipment, settings, sessions, sets };
   }
 
+  /**
+   * Replace every table with the snapshot's rows (C4.3).
+   *
+   * One transaction over all six stores, so a restore that fails partway leaves
+   * the database as it was. That is the whole reason this is a repository method
+   * rather than a loop over the existing writers: `saveRotation`, `appendSession`
+   * and `appendSets` would do the same work in four transactions, and a crash
+   * between two of them would leave sessions with no sets and no way to tell.
+   *
+   * `bulkAdd`, not `bulkPut`, on tables that were just cleared: a duplicate id
+   * inside the document should fail loudly here rather than silently keep the
+   * last of the pair. `importJson` catches most of those first, with a better
+   * message; this is the backstop that makes it safe to be wrong about that.
+   *
+   * `engineState` is cleared and not refilled. The snapshot has no cache in it,
+   * and leaving the old one behind — built from a log that no longer exists — is
+   * exactly the silent wrongness INV-2 exists to prevent. `importJson` rebuilds
+   * it immediately; until then the table is honestly empty.
+   */
+  async restore(snapshot: Snapshot): Promise<void> {
+    const { exercises, equipment, settings, sessions, sets } = snapshot;
+    const tables = [
+      this.db.exercise,
+      this.db.equipment,
+      this.db.settings,
+      this.db.session,
+      this.db.setLog,
+      this.db.engineState,
+    ];
+    await this.db.transaction("rw", tables, async () => {
+      for (const table of tables) await table.clear();
+      await this.db.exercise.bulkAdd(exercises.map((exercise, order) => ({ ...exercise, order })));
+      await this.db.equipment.add({ ...equipment, id: SINGLETON_ID });
+      await this.db.settings.add({ ...settings, id: SINGLETON_ID });
+      await this.db.session.bulkAdd([...sessions]);
+      await this.db.setLog.bulkAdd([...sets]);
+    });
+  }
+
   /* ----------------------------------------------------------- the cache */
 
   async getEngineState(exerciseId: ExerciseId): Promise<EngineState | undefined> {

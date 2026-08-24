@@ -1,6 +1,6 @@
 /**
- * C4.1 and C4.2 — the export is a whole database in a file, and a spreadsheet
- * beside it.
+ * C4.1, C4.2 and C4.3 — the export is a whole database in a file, a spreadsheet
+ * beside it, and a way back in.
  *
  * The claims worth testing are not about JSON. They are: nothing is left out
  * (including the rows every other read hides), nothing derived is put in, and
@@ -14,8 +14,14 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { openDexieRepo } from "../src/db/dexie-repo";
 import type { Repo } from "../src/db/repo";
 import { SCHEMA_VERSION } from "../src/db/schema";
-import { EXPORT_FORMAT, type ExportDocument, exportCsv, exportJson } from "../src/db/transfer";
-import type { Exercise, Session, SetLog } from "../src/engine";
+import {
+  EXPORT_FORMAT,
+  type ExportDocument,
+  exportCsv,
+  exportJson,
+  importJson,
+} from "../src/db/transfer";
+import type { EngineState, Exercise, Session, SetLog } from "../src/engine";
 
 /* ------------------------------------------------------------- fixtures */
 
@@ -301,5 +307,167 @@ describe("the spreadsheet (C4.2)", () => {
     await fresh.saveRotation(ROTATION);
 
     expect(rows(await exportCsv(fresh))).toHaveLength(1);
+  });
+});
+
+/* ---------------------------------------------------------------- import */
+
+/**
+ * A document with one field changed, for the validator tests. Re-indented like
+ * the real thing so a test can also reach in and edit the text.
+ */
+async function tampered(change: (doc: Record<string, unknown>) => void): Promise<string> {
+  const doc = JSON.parse(await exportJson(repo, AT)) as Record<string, unknown>;
+  change(doc);
+  return JSON.stringify(doc, null, 2);
+}
+
+describe("restoring a backup (C4.3)", () => {
+  it("puts back what was exported", async () => {
+    const json = await exportJson(repo, AT);
+    const wiped = await openDexieRepo(`lift-log-transfer-${(dbCount += 1)}`);
+
+    await importJson(wiped, json);
+
+    expect(await exportJson(wiped, AT)).toBe(json);
+  });
+
+  it("replaces what was there rather than merging with it", async () => {
+    const json = await exportJson(repo, AT);
+    const other = await openDexieRepo(`lift-log-transfer-${(dbCount += 1)}`);
+    await other.saveRotation([{ ...ROTATION[0]!, id: "rows-of-its-own" }]);
+    await other.appendSession(session({ id: "not-in-the-backup" }));
+
+    await importJson(other, json);
+
+    // The athlete asked to restore a backup. A merge would leave behind the
+    // very session they were trying to get rid of, with no rule for the case
+    // where both sides hold the same id.
+    await expect(other.getSession("not-in-the-backup")).resolves.toBeUndefined();
+    expect((await other.listExercises()).map((e) => e.id)).toEqual(ROTATION.map((e) => e.id));
+  });
+
+  it("brings a deleted session back deleted", async () => {
+    await repo.softDeleteSession("s1", AT);
+    const json = await exportJson(repo, AT);
+    const wiped = await openDexieRepo(`lift-log-transfer-${(dbCount += 1)}`);
+
+    await importJson(wiped, json);
+
+    await expect(wiped.getSession("s1")).resolves.toBeUndefined();
+    expect((await wiped.snapshot()).sessions.find((s) => s.id === "s1")?.deletedAt).toBe(AT);
+  });
+
+  it("rebuilds the engine cache from the log it just wrote", async () => {
+    const json = await exportJson(repo, AT);
+    const wiped = await openDexieRepo(`lift-log-transfer-${(dbCount += 1)}`);
+    // A cache from the database this one used to be. Nothing in the document
+    // can contradict it, because the document has no cache in it — so if the
+    // import did not rebuild, this poison would survive.
+    await wiped.putEngineState([{ exerciseId: "press", currentKg: 999, stallCount: 99 }]);
+
+    const result = await importJson(wiped, json);
+
+    // Sorted, because `listEngineState` promises no order and the rebuild
+    // hands its states back in rotation order.
+    const byId = (a: EngineState, b: EngineState) => a.exerciseId.localeCompare(b.exerciseId);
+    expect([...result.state].sort(byId)).toEqual([...(await wiped.listEngineState())].sort(byId));
+    expect((await wiped.getEngineState("press"))?.currentKg).not.toBe(999);
+  });
+
+  it("reports what it restored", async () => {
+    const json = await exportJson(repo, AT);
+    const wiped = await openDexieRepo(`lift-log-transfer-${(dbCount += 1)}`);
+
+    const result = await importJson(wiped, json);
+
+    expect(result).toMatchObject({
+      exportedAt: AT,
+      schemaVersion: SCHEMA_VERSION,
+      exercises: 2,
+      sessions: 2,
+      sets: 4,
+    });
+  });
+
+  it("marks the restored database as current, whatever the file said", async () => {
+    const json = await tampered((doc) => {
+      (doc["settings"] as Record<string, unknown>)["schemaVersion"] = 1;
+    });
+    const wiped = await openDexieRepo(`lift-log-transfer-${(dbCount += 1)}`);
+
+    await importJson(wiped, json);
+
+    // The rebuild has just run under this version's rules, so saying the
+    // database is behind would make the next open rebuild it again for nothing.
+    expect((await wiped.getSettings()).schemaVersion).toBe(SCHEMA_VERSION);
+  });
+});
+
+describe("refusing a file it cannot trust", () => {
+  it("refuses something that is not JSON", async () => {
+    await expect(importJson(repo, "sorry, wrong file")).rejects.toThrow(/not JSON/);
+  });
+
+  it("refuses another app's JSON, before complaining about fields", async () => {
+    await expect(importJson(repo, '{"users":[],"posts":[]}')).rejects.toThrow(
+      new RegExp(EXPORT_FORMAT),
+    );
+  });
+
+  it("refuses a backup from a newer version of the app", async () => {
+    const json = await tampered((doc) => {
+      doc["schemaVersion"] = SCHEMA_VERSION + 1;
+    });
+
+    // Guessing at rows whose shape has not been invented yet is how a field
+    // goes quietly missing. "Update the app" is something the athlete can act on.
+    await expect(importJson(repo, json)).rejects.toThrow(/newer version/);
+  });
+
+  it("names the field that is wrong", async () => {
+    const json = await tampered((doc) => {
+      (doc["sessions"] as Record<string, unknown>[])[1]!["actualKg"] = "twenty";
+    });
+
+    await expect(importJson(repo, json)).rejects.toThrow(/sessions\[1\]\.actualKg/);
+  });
+
+  it("refuses a weight that parses to Infinity", async () => {
+    // JSON has no Infinity literal, but `1e999` parses to one, and it would
+    // poison every weight derived from it.
+    const json = (await tampered(() => {})).replace('"actualKg": 20', '"actualKg": 1e999');
+
+    await expect(importJson(repo, json)).rejects.toThrow(/actualKg/);
+  });
+
+  it("refuses two rows with the same id", async () => {
+    const json = await tampered((doc) => {
+      const sets = doc["sets"] as Record<string, unknown>[];
+      sets.push({ ...sets[0]! });
+    });
+
+    await expect(importJson(repo, json)).rejects.toThrow(/share the id/);
+  });
+
+  it("refuses a status it does not know", async () => {
+    const json = await tampered((doc) => {
+      (doc["sessions"] as Record<string, unknown>[])[0]!["status"] = "sort of finished";
+    });
+
+    await expect(importJson(repo, json)).rejects.toThrow(/status/);
+  });
+
+  it("writes nothing at all when the file is bad", async () => {
+    const before = await exportJson(repo, AT);
+    const json = await tampered((doc) => {
+      doc["sets"] = "not a list";
+    });
+
+    await expect(importJson(repo, json)).rejects.toThrow();
+
+    // The athlete running an import has already lost their data once. Every
+    // check happens before the first write for exactly this reason.
+    expect(await exportJson(repo, AT)).toBe(before);
   });
 });

@@ -200,6 +200,26 @@ export interface Repo {
    */
   snapshot(): Promise<Snapshot>;
 
+  /**
+   * Replace everything with the contents of a snapshot (C4.3).
+   *
+   * Replace, not merge. Merging two logs would need a rule for what to do when
+   * both hold a session with the same id and different sets, and there is no
+   * honest answer — the athlete asked to restore a backup, and a restore that
+   * left yesterday's mistake in place would not be one. The whole database is
+   * the unit here, which is also why the import path is a file rather than a
+   * sync (§9.3).
+   *
+   * `engineState` is dropped rather than restored, because a snapshot does not
+   * carry it. The caller must rebuild it before anything reads a prescription;
+   * `importJson` does exactly that, and doing it here would make this method
+   * depend on the engine (C4.3, C3.1).
+   *
+   * An implementation must make this atomic if it can. A half-written restore —
+   * new sessions, old sets — is the one state from which nothing can recover.
+   */
+  restore(snapshot: Snapshot): Promise<void>;
+
   /* --------------------------------------------------------- the cache */
 
   /**

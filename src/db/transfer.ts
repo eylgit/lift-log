@@ -27,8 +27,19 @@
  * tested without a browser.
  */
 
-import type { ExerciseId, Instant, SetLog } from "../engine";
+import type {
+  EngineState,
+  Equipment,
+  Exercise,
+  ExerciseId,
+  Instant,
+  Session,
+  SetLog,
+} from "../engine";
+import { rebuildState } from "./replay";
 import type { Repo, Snapshot } from "./repo";
+import { SCHEMA_VERSION } from "./schema";
+import type { Settings } from "./types";
 
 /* -------------------------------------------------------------- the file */
 
@@ -189,4 +200,292 @@ export async function exportCsv(repo: Repo): Promise<string> {
     }
   }
   return csv;
+}
+
+/* ------------------------------------------------------------- importing */
+
+/** What was restored, for the screen that asked for it (F4). */
+export type ImportResult = {
+  /** When the file was taken — the thing to show, since it is what was lost. */
+  readonly exportedAt: Instant;
+  /** The version the file was written at, before any migration. */
+  readonly schemaVersion: number;
+  readonly exercises: number;
+  readonly sessions: number;
+  readonly sets: number;
+  /** The cache as rebuilt from the restored log (C3.1). */
+  readonly state: readonly EngineState[];
+};
+
+/**
+ * Read a document and put it in the database, replacing what was there (C4.3).
+ *
+ * The order is: parse, check, replace, rebuild. Everything that can fail is
+ * done before anything is written, because the athlete running this has already
+ * lost their data once — an import that half-succeeded would be the second time.
+ *
+ * `rebuildState` is called unconditionally rather than through
+ * `rebuildIfMigrated`. There is nothing to check: every fact in the database is
+ * new, so every derived row is stale by definition, whatever version wrote them
+ * (C3.2).
+ *
+ * The parameter is the file's text, not a `File`. Reading a picked file is the
+ * shell's job (F4), and keeping the DOM out of here is what lets the restore
+ * path be tested without a browser.
+ */
+export async function importJson(repo: Repo, json: string): Promise<ImportResult> {
+  const document = migrate(parseDocument(json));
+  await repo.restore({
+    exercises: document.exercises,
+    equipment: document.equipment,
+    settings: { ...document.settings, schemaVersion: SCHEMA_VERSION },
+    sessions: document.sessions,
+    sets: document.sets,
+  });
+  const state = await rebuildState(repo);
+  return {
+    exportedAt: document.exportedAt,
+    schemaVersion: document.schemaVersion,
+    exercises: document.exercises.length,
+    sessions: document.sessions.length,
+    sets: document.sets.length,
+    state,
+  };
+}
+
+/**
+ * Bring an older document up to the current schema (C4.3).
+ *
+ * There is nothing to do yet — there has only ever been one version — and the
+ * function exists anyway, for the same reason Dexie's versioning was declared
+ * with nothing to migrate (C1.3). The expensive moment is the one where a year
+ * of real training data is sitting in a file written by last year's app, and by
+ * then it is far too late to decide where the conversion goes.
+ *
+ * A document from a *newer* app is refused rather than guessed at. Reading rows
+ * whose shape has not been invented yet cannot be done safely, and the failure
+ * the athlete can act on — "update the app first" — is much better than a
+ * database quietly missing a field.
+ */
+function migrate(document: ExportDocument): ExportDocument {
+  const { schemaVersion } = document;
+  if (schemaVersion === SCHEMA_VERSION) return document;
+  if (schemaVersion > SCHEMA_VERSION) {
+    throw new Error(
+      `This backup was made by a newer version of Lift Log (schema ${schemaVersion}; ` +
+        `this app reads ${SCHEMA_VERSION}). Update the app and try again.`,
+    );
+  }
+  // Each future version gets a step here, oldest first, each one taking a
+  // document from version N to N + 1.
+  throw new Error(`This backup's schema version (${schemaVersion}) is not one this app knows.`);
+}
+
+/* ----------------------------------------------------------- reading it */
+
+/**
+ * Everything below turns an unknown blob of JSON into an `ExportDocument`, or
+ * throws saying which field was wrong.
+ *
+ * It is longer than the exporter, which is the correct proportion. The export
+ * runs against a database whose shape TypeScript already guarantees; the import
+ * runs against a file that has been off this machine — through a cloud drive, a
+ * mail client, possibly a text editor — and the only thing standing between a
+ * bad byte in it and a corrupted log is this code. TypeScript is no help at
+ * all here: `JSON.parse` returns `any`, and a cast would be a lie that shows up
+ * later as `undefined` in a chart.
+ *
+ * What it does not do is enforce meaning. A set pointing at a session that is
+ * not in the file is kept, not rejected, because `snapshot()` keeps such a row
+ * for the same reason — refusing to restore a backup on the strength of a row
+ * the backup faithfully preserved would make the file useless at the one moment
+ * it matters. Deciding what a fact means is the engine's business (INV-2);
+ * this decides only that the file is a Lift Log backup and its fields are the
+ * types they claim.
+ */
+
+/** The message a person reads when the file is wrong. Prefixed once, here. */
+function fail(what: string): never {
+  throw new Error(`This file is not a usable Lift Log backup: ${what}.`);
+}
+
+type Row = Record<string, unknown>;
+
+function readRow(value: unknown, where: string): Row {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    fail(`${where} should be an object`);
+  }
+  return value as Row;
+}
+
+function readArray(row: Row, field: string, where: string): unknown[] {
+  const value = row[field];
+  if (!Array.isArray(value)) fail(`${where}.${field} should be a list`);
+  return value;
+}
+
+function readString(row: Row, field: string, where: string): string {
+  const value = row[field];
+  if (typeof value !== "string") fail(`${where}.${field} should be text`);
+  return value;
+}
+
+/** A string or null — `finishedAt`, `note` and `deletedAt` are all three. */
+function readNullableString(row: Row, field: string, where: string): string | null {
+  const value = row[field];
+  if (value !== null && typeof value !== "string") fail(`${where}.${field} should be text or null`);
+  return value;
+}
+
+function readNumber(row: Row, field: string, where: string, min = -Infinity): number {
+  const value = row[field];
+  // `Number.isFinite` and not `typeof === "number"`: JSON has no NaN or
+  // Infinity literal, but a hand-edited file can hold `1e999`, which parses to
+  // Infinity and would poison every weight derived from it.
+  if (typeof value !== "number" || !Number.isFinite(value) || value < min) {
+    fail(`${where}.${field} should be a number${min === -Infinity ? "" : ` of at least ${min}`}`);
+  }
+  return value;
+}
+
+function readCount(row: Row, field: string, where: string): number {
+  const value = readNumber(row, field, where, 0);
+  if (!Number.isInteger(value)) fail(`${where}.${field} should be a whole number`);
+  return value;
+}
+
+function readOneOf<T extends string>(
+  row: Row,
+  field: string,
+  where: string,
+  allowed: readonly T[],
+): T {
+  const value = readString(row, field, where);
+  if (!(allowed as readonly string[]).includes(value)) {
+    fail(`${where}.${field} should be one of ${allowed.join(", ")} (found "${value}")`);
+  }
+  return value as T;
+}
+
+/** Two rows with one id would make the second overwrite the first, silently. */
+function readUnique<T>(items: readonly T[], id: (item: T) => string, what: string): readonly T[] {
+  const seen = new Set<string>();
+  for (const item of items) {
+    const key = id(item);
+    if (seen.has(key)) fail(`two ${what} share the id "${key}"`);
+    seen.add(key);
+  }
+  return items;
+}
+
+function readExercise(value: unknown, index: number): Exercise {
+  const where = `exercises[${index}]`;
+  const row = readRow(value, where);
+  return {
+    id: readString(row, "id", where),
+    name: readString(row, "name", where),
+    pattern: readOneOf(row, "pattern", where, [
+      "squat",
+      "hip hinge",
+      "vertical push",
+      "horizontal push",
+      "horizontal pull",
+    ]),
+    videoQuery: readString(row, "videoQuery", where),
+    startKg: readNumber(row, "startKg", where, 0),
+    weakSide: readOneOf(row, "weakSide", where, ["left", "right"]),
+  };
+}
+
+function readSession(value: unknown, index: number): Session {
+  const where = `sessions[${index}]`;
+  const row = readRow(value, where);
+  return {
+    id: readString(row, "id", where),
+    exerciseId: readString(row, "exerciseId", where),
+    startedAt: readString(row, "startedAt", where),
+    finishedAt: readNullableString(row, "finishedAt", where),
+    trainingDay: readString(row, "trainingDay", where),
+    prescribedKg: readNumber(row, "prescribedKg", where, 0),
+    actualKg: readNumber(row, "actualKg", where, 0),
+    status: readOneOf(row, "status", where, ["planned", "complete", "abandoned"]),
+    note: readNullableString(row, "note", where),
+    deletedAt: readNullableString(row, "deletedAt", where),
+  };
+}
+
+function readSet(value: unknown, index: number): SetLog {
+  const where = `sets[${index}]`;
+  const row = readRow(value, where);
+  return {
+    id: readString(row, "id", where),
+    sessionId: readString(row, "sessionId", where),
+    ordinal: readCount(row, "ordinal", where),
+    side: readOneOf(row, "side", where, ["left", "right"]),
+    targetReps: readCount(row, "targetReps", where),
+    doneReps: readCount(row, "doneReps", where),
+    loggedAt: readString(row, "loggedAt", where),
+  };
+}
+
+function readEquipment(value: unknown): Equipment {
+  const row = readRow(value, "equipment");
+  const stepKg = readNumber(row, "stepKg", "equipment", 0);
+  // Zero is the one number that breaks the engine rather than merely looking
+  // odd: progress would be adding nothing, forever. `assertStep` refuses it too.
+  if (stepKg === 0) fail("equipment.stepKg should be more than zero");
+  return { stepKg };
+}
+
+function readSettings(value: unknown): Settings {
+  const row = readRow(value, "settings");
+  return {
+    units: readOneOf(row, "units", "settings", ["kg", "lb"]),
+    restTargetS: readNumber(row, "restTargetS", "settings", 0),
+    stallThreshold: readCount(row, "stallThreshold", "settings"),
+    lastExportedAt: readNullableString(row, "lastExportedAt", "settings"),
+    schemaVersion: readCount(row, "schemaVersion", "settings"),
+  };
+}
+
+/**
+ * The file, checked (C4.3).
+ *
+ * `format` is tested first and on purpose: pointing the restore at some other
+ * app's JSON should say so plainly, rather than working through the fields and
+ * complaining that `exercises` is missing.
+ */
+function parseDocument(json: string): ExportDocument {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    fail("it is not JSON at all");
+  }
+
+  const document = readRow(parsed, "the file");
+  if (document["format"] !== EXPORT_FORMAT) {
+    fail(`it does not say "${EXPORT_FORMAT}" at the top`);
+  }
+  const schemaVersion = readCount(document, "schemaVersion", "the file");
+  if (schemaVersion < 1) fail("its schemaVersion should be at least 1");
+
+  return {
+    format: EXPORT_FORMAT,
+    schemaVersion,
+    exportedAt: readString(document, "exportedAt", "the file"),
+    exercises: readUnique(
+      readArray(document, "exercises", "the file").map(readExercise),
+      (exercise) => exercise.id,
+      "exercises",
+    ),
+    equipment: readEquipment(document["equipment"]),
+    settings: readSettings(document["settings"]),
+    sessions: readUnique(
+      readArray(document, "sessions", "the file").map(readSession),
+      (session) => session.id,
+      "sessions",
+    ),
+    sets: readUnique(readArray(document, "sets", "the file").map(readSet), (set) => set.id, "sets"),
+  };
 }
