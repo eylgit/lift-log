@@ -412,7 +412,7 @@ never really lifted.
   `softDeleteSession`, `getEquipment`, `getSettings`, and so on. No Dexie types in the signatures.
 - **C2.2** Implement `src/db/dexie-repo.ts` against that interface.
 - **C2.3** Nothing outside `src/db/` may import Dexie. This is what makes the later swap to native
-  SQLite (Part J) a day rather than a rewrite.
+  SQLite (K4) a day rather than a rewrite.
 - **C2.4** `softDeleteSession` sets `deletedAt`; every read filters it out (INV-3).
 
 ## C3 — Replay
@@ -432,7 +432,7 @@ never really lifted.
   `settings.schemaVersion` (C1.4) is behind, the cache was filled by an older version's rules, so
   it is rebuilt and the version is written **after** the rebuild succeeds — a failed rebuild must
   leave the database looking un-migrated so the next open retries. The trigger is the stored
-  version rather than a Dexie `upgrade()` hook, because that survives the swap to SQLite (Part J)
+  version rather than a Dexie `upgrade()` hook, because that survives the swap to SQLite (K4)
   and also catches a database that arrived with data already in it. The import half is C4.3, which
   calls `rebuildState` unconditionally: it replaces every table, so there is nothing to check.
 - **C3.3** Test: seed a log, snapshot `engineState`, drop the table, rebuild, assert identical.
@@ -864,37 +864,6 @@ tolerating nonsense — a field of the wrong type is still refused.*
 
 ---
 
-# Part I — Sync backup *(optional, later)*
-
-**Goal.** A second copy of the log that does not depend on the user remembering to export.
-**Prerequisites.** Part F. **Effort.** One weekend.
-
-- **I1.1** One table: `(syncId, blob, updatedAt)`. Cloudflare Workers + D1, or Supabase. Free tier.
-- **I1.2** `syncId` is a random 128-bit key generated on the device and shown once as a recovery
-  phrase or QR code. **This is not an account system** — no email, no password, no profile.
-- **I1.3** Push the whole document after each session. Last-write-wins on the blob.
-  **Do not build CRDTs**; the data is a few hundred kilobytes and has one writer.
-- **I1.4** Optionally encrypt client-side with a key derived from the phrase.
-- **I1.5** Sync is opt-in and off by default. INV-9 still holds: nothing may *require* the network.
-
----
-
-# Part J — Native apps via Capacitor *(optional, later)*
-
-**Goal.** iOS and Android builds from the same code, and the OS takes over the durability problem.
-**Prerequisites.** Part H. **Effort.** One to two weekends, mostly store paperwork.
-
-- **J1.1** `npx cap init && npx cap add ios android`.
-- **J1.2** Swap the `src/db/` implementation for `@capacitor-community/sqlite`. The interface from
-  C2.1 does not change; the engine and the UI never find out.
-- **J1.3** Swap the platform layer for `@capacitor/local-notifications` — **real scheduled reminders
-  become possible here**, which they are not on the web (D3.4).
-- **J1.4** Data now lives in the app sandbox, backed up to iCloud and Google Drive automatically.
-- **J1.5** Store listings, screenshots, privacy declarations. Budget more time for this than for the
-  code.
-
----
-
 # Part K — Later, nice-to-have *(open list)*
 
 **Goal.** A holding pen for improvements that should not happen now.
@@ -902,10 +871,11 @@ tolerating nonsense — a field of the wrong type is still refused.*
 
 Nothing here blocks v1, and nothing here should be pulled forward without the project owner saying
 so. **This list is expected to grow** — items get added as they come up during the build, and are
-promoted out when they are worth doing.
+promoted out when they are worth doing. The last two items are whole projects rather than
+improvements — they keep their own prerequisites and effort, and neither is on the path to v1.
 
-A standing principle for this part: **prefer a warning to a mechanism.** A warning that turns out
-to be wrong is deleted and nothing in the log changes. A mechanism that turns out to be wrong has
+A standing principle for the engine-facing items here: **prefer a warning to a mechanism.** A
+warning that turns out to be wrong is deleted and nothing in the log changes. A mechanism that turns out to be wrong has
 been silently reshaping numbers for months, and the damage is already in the history. The engine
 should be right about the few things it can actually know; everything it is guessing at belongs on
 screen as a sentence, not in the code as a rule.
@@ -949,14 +919,41 @@ that would otherwise need a rule in the engine should be considered for this fir
   one-tap fix or stops firing. Do not let this area become where known-unfixed things go to be
   quiet.
 
+## K3 — Sync backup
+
+**Goal.** A second copy of the log that does not depend on the user remembering to export.
+**Prerequisites.** Part F. **Effort.** One weekend.
+
+- **K3.1** One table: `(syncId, blob, updatedAt)`. Cloudflare Workers + D1, or Supabase. Free tier.
+- **K3.2** `syncId` is a random 128-bit key generated on the device and shown once as a recovery
+  phrase or QR code. **This is not an account system** — no email, no password, no profile.
+- **K3.3** Push the whole document after each session. Last-write-wins on the blob.
+  **Do not build CRDTs**; the data is a few hundred kilobytes and has one writer.
+- **K3.4** Optionally encrypt client-side with a key derived from the phrase.
+- **K3.5** Sync is opt-in and off by default. INV-9 still holds: nothing may *require* the network.
+
+## K4 — Native apps via Capacitor
+
+**Goal.** iOS and Android builds from the same code, and the OS takes over the durability problem.
+**Prerequisites.** Part H. **Effort.** One to two weekends, mostly store paperwork.
+
+- **K4.1** `npx cap init && npx cap add ios android`.
+- **K4.2** Swap the `src/db/` implementation for `@capacitor-community/sqlite`. The interface from
+  C2.1 does not change; the engine and the UI never find out.
+- **K4.3** Swap the platform layer for `@capacitor/local-notifications` — **real scheduled reminders
+  become possible here**, which they are not on the web (D3.4).
+- **K4.4** Data now lives in the app sandbox, backed up to iCloud and Google Drive automatically.
+- **K4.5** Store listings, screenshots, privacy declarations. Budget more time for this than for the
+  code.
+
 ---
 
 ## Sequencing summary
 
 ```
-A ──► B ──► C ──► D ──► E ──► G ──► H ──► I (optional)
-                   │     ▲            └──► J (optional)
-                   └► F ─┘
+A ──► B ──► C ──► D ──► E ──► G ──► H ──► K (optional, open list)
+                   │     ▲                 ├─ K3 sync backup   (needs F)
+                   └► F ─┘                 └─ K4 native apps   (needs H)
 ```
 
 | Part | Effort | Blocks |
@@ -968,10 +965,8 @@ A ──► B ──► C ──► D ──► E ──► G ──► H ──
 | E · History and progress | one weekend | G |
 | F · Durability | one weekend | G |
 | G · Onboarding | a few evenings | H |
-| H · Ship v1.0 | one weekend | I, J |
-| I · Sync backup | one weekend | — |
-| J · Native apps | one to two weekends | — |
-| K · Later, nice-to-have | varies | — |
+| H · Ship v1.0 | one weekend | — |
+| K · Later, nice-to-have *(K3 one weekend, K4 one to two weekends)* | varies | — |
 
 ## Standing instructions for whoever builds this
 
