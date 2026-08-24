@@ -110,6 +110,14 @@ export type Today = RotationDay & {
   /** The athlete's step, which is what the weight stepper moves by (D5.4). */
   readonly stepKg: number;
   /**
+   * When the log was last written to a file, or null if it never has been (F3).
+   *
+   * On the card because it is the one number here that is about losing
+   * everything rather than about lifting. "never" should be uncomfortable to
+   * read, and it is meant to be.
+   */
+  readonly lastExportedAt: string | null;
+  /**
    * How long to rest between sets, in seconds.
    *
    * From settings rather than from `prescription.restMinutes`, and the two are
@@ -317,6 +325,7 @@ export async function loadToday(repo: Repo, chosenLift?: ExerciseId): Promise<To
     change: describeChange(day.prescription.weightKg, last, equipment.stepKg),
     rotation: exercises,
     stepKg: equipment.stepKg,
+    lastExportedAt: settings.lastExportedAt,
     restTargetS: settings.restTargetS,
   };
 }

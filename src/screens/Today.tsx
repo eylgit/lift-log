@@ -23,7 +23,7 @@ export function TodayScreen({
   actions: Actions;
 }) {
   const { prescription: rx, dayIndex, rotationLength, last, change } = today;
-  const { rotation, stepKg, restTargetS } = today;
+  const { rotation, stepKg, restTargetS, lastExportedAt } = today;
   const chosenWeight = plan.weightKg !== rx.weightKg;
   const names = new Map(rotation.map((e) => [e.id, e.name] as const));
 
@@ -115,6 +115,14 @@ export function TodayScreen({
       <div className="kv">
         <span className="k">TRAINING DAY</span>
         <span className="v">{trainingDay()}</span>
+      </div>
+      <div className="kv">
+        <span className="k">LAST BACKUP</span>
+        <span className="v">
+          <button className="tap" onClick={actions.openBackup}>
+            {lastExportedAt === null ? "never — back up" : lastExportedAt.slice(0, 10)}
+          </button>
+        </span>
       </div>
 
       <p className="hint">A dotted underline means you can tap it.</p>

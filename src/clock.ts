@@ -25,6 +25,18 @@ import type { TrainingDay } from "./engine";
 export function trainingDay(now: Date = new Date()): TrainingDay {
   const d = new Date(now);
   if (d.getHours() < 3) d.setDate(d.getDate() - 1);
+  return localDay(d);
+}
+
+/**
+ * The local calendar date, `YYYY-MM-DD`, with no cutoff and no cleverness.
+ *
+ * This is the plain date, for things that are about the clock rather than about
+ * training — a backup's filename, most of all. A file saved at half past
+ * midnight belongs to the day the phone says it is, because that is the day the
+ * athlete will look for it under.
+ */
+export function localDay(now: Date = new Date()): string {
   const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
 }

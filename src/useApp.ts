@@ -20,7 +20,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { openRepo } from "./db";
+import type { Format } from "./backup";
+import { saveFile } from "./backup";
+import { exportCsv, exportJson, openRepo } from "./db";
 import type { Exercise, ExerciseId, OutcomeResult, Side } from "./engine";
 import type { SessionView } from "./session";
 import {
@@ -32,6 +34,7 @@ import {
   setWeight as setWeightOf,
   startSession,
 } from "./session";
+import type { BackupState } from "./screens/Backup";
 import type { Today } from "./today";
 import { loadToday } from "./today";
 
@@ -69,7 +72,8 @@ export type Screen =
       readonly name: "summary";
       readonly view: SessionView;
       readonly outcome: OutcomeResult;
-    };
+    }
+  | { readonly name: "backup"; readonly state: BackupState };
 
 /** Today's session as the athlete has adjusted it. */
 export type Plan = {
@@ -108,6 +112,13 @@ export type Actions = {
   readonly chooseRest: (seconds: number) => void;
   /** Mid-session: log the side you actually did, if it was not the one offered. */
   readonly flipSide: () => void;
+
+  /* ------------------------------------------------------- backup (F1) */
+
+  /** Open the backup screen. */
+  readonly openBackup: () => void;
+  /** Write the log to a file and, if it got there, record that it happened. */
+  readonly download: (format: Format) => void;
 };
 
 /** The plan a freshly loaded card starts from: exactly what was prescribed. */
@@ -263,6 +274,67 @@ export function useApp(): readonly [Screen, Actions] {
     [run],
   );
 
+  /* ----------------------------------------------------------- backup (F1) */
+
+  const readBackup = useCallback(async (over: Partial<BackupState> = {}): Promise<Screen> => {
+    const repo = await openRepo();
+    const [settings, sessions] = await Promise.all([repo.getSettings(), repo.listSessions()]);
+    return {
+      name: "backup",
+      state: {
+        lastExportedAt: settings.lastExportedAt,
+        sessions: sessions.length,
+        // `persist()` is idempotent and returns the standing answer, so asking
+        // again here costs nothing and is the only way to be current (F1.1).
+        persisted: (await navigator.storage?.persist?.().catch(() => false)) ?? null,
+        result: null,
+        error: null,
+        busy: false,
+        ...over,
+      },
+    };
+  }, []);
+
+  const openBackup = useCallback(() => void run(() => readBackup()), [run, readBackup]);
+
+  const download = useCallback(
+    (format: Format) => {
+      const here = current.current;
+      if (here.name !== "backup" || here.state.busy) return;
+      setScreen({ ...here, state: { ...here.state, busy: true, error: null, result: null } });
+
+      void (async () => {
+        try {
+          const repo = await openRepo();
+          const exportedAt = new Date().toISOString();
+          const contents =
+            format === "json" ? await exportJson(repo, exportedAt) : await exportCsv(repo);
+          const saved = await saveFile(contents, format);
+
+          // Only the full backup counts as a backup. A spreadsheet cannot
+          // restore anything, and recording it as one would silence the nudge
+          // that exists to stop the log being lost (F3.1).
+          if (format === "json") await repo.saveSettings({ lastExportedAt: exportedAt });
+          if (live.current) setScreen(await readBackup({ result: { saved, format } }));
+        } catch (error: unknown) {
+          if (!live.current) return;
+          // Dismissing the share sheet is not a failure and is not worth a
+          // sentence — but it must not be recorded as a backup either, which
+          // is why it arrives here rather than in the success path.
+          const cancelled = error instanceof DOMException && error.name === "AbortError";
+          setScreen(
+            await readBackup({
+              error: cancelled
+                ? null
+                : `The backup could not be written: ${error instanceof Error ? error.message : String(error)}`,
+            }),
+          );
+        }
+      })();
+    },
+    [readBackup],
+  );
+
   const finish = useCallback(() => close("complete"), [close]);
   const abandon = useCallback(() => close("abandoned"), [close]);
   const dismiss = useCallback(() => void run(() => toToday()), [run, toToday]);
@@ -381,6 +453,8 @@ export function useApp(): readonly [Screen, Actions] {
       flipWeakSide,
       chooseRest,
       flipSide,
+      openBackup,
+      download,
     },
   ] as const;
 }

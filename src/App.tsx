@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
+import { BackupScreen } from "./screens/Backup";
 import { SessionScreen } from "./screens/Session";
 import { SummaryScreen } from "./screens/Summary";
 import { TodayScreen } from "./screens/Today";
@@ -71,6 +72,14 @@ export default function App() {
           restTargetS={screen.restTargetS}
           sideOverride={screen.sideOverride}
           actions={actions}
+        />
+      )}
+
+      {screen.name === "backup" && (
+        <BackupScreen
+          state={screen.state}
+          onDownload={actions.download}
+          onBack={actions.dismiss}
         />
       )}
 

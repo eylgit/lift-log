@@ -590,11 +590,23 @@ everything after is improvement, not enablement.
 **Prerequisites.** Part C. Can run in parallel with E.
 **Effort.** One weekend.
 
+*Part of F1 and F3.1 were pulled forward at the end of Part D, at the owner's request and on this
+plan's own standing instruction — "ship export in Part C, not Part F; from Part D the data is
+real". The bytes had existed since C4 with no button attached, which meant a real log with no way
+to get it out. What exists now: a Back up screen reached from the Today card, Download backup
+(JSON) and Download a spreadsheet (CSV), and `lastExportedAt` written only when the full backup
+actually left the app. The rest of F1 and all of F2/F3/F4 are untouched.*
+
 ## F1 — Persistence and honesty
-- **F1.1** Call `navigator.storage.persist()` once during onboarding; store the result.
-- **F1.2** Read `navigator.storage.estimate()` for usage and quota.
+- **F1.1** Call `navigator.storage.persist()` once during onboarding; store the result. *(Called on
+  every open of the shell and again on the Back up screen. It is idempotent and returns the
+  standing answer, so there is nothing to store — asking is cheaper than remembering. Onboarding is
+  still G.)*
+- **F1.2** Read `navigator.storage.estimate()` for usage and quota. *(Not done.)*
 - **F1.3** Show a plain storage-status block: stored on this device, installed yes/no, persistent
-  granted/best-effort, usage, last backup. Do not hide it.
+  granted/best-effort, usage, last backup. Do not hide it. *(Partly: the Back up screen shows
+  persistent/best-effort, last backup and how many sessions would be lost, and says plainly that a
+  browser can throw the log away. Installed and usage are still missing.)*
 
 ## F2 — Install nudge
 - **F2.1** Detect iOS Safari not running standalone.
@@ -603,13 +615,16 @@ everything after is improvement, not enablement.
 - **F2.3** On Android, use the `beforeinstallprompt` event.
 
 ## F3 — Backup nudge
-- **F3.1** Track `lastExportedAt` in settings.
+- **F3.1** Track `lastExportedAt` in settings. *(Done. Written only after the JSON backup has been
+  handed over — a cancelled share sheet does not count, and a CSV never does, because a spreadsheet
+  cannot restore anything.)*
 - **F3.2** After ~14 days or ~10 sessions without a backup, interrupt once with a dismissible
   full-screen step: one sentence, one large Download button.
 - **F3.3** This is the highest-leverage item in the whole data story. Do not skip it.
 
 ## F4 — Import
-- **F4.1** File picker → validate → confirm → replace → `rebuildState()`.
+- **F4.1** File picker → validate → confirm → replace → `rebuildState()`. *(Still to do, and it is
+  the other half of the backup that now exists: the file can be written but not yet read back in.)*
 - **F4.2** The confirm must state plainly that import **replaces** the log on this device.
 - **F4.3** Place Import beside Download, visually secondary.
 

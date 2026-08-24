@@ -13,12 +13,25 @@
 
 import { describe, expect, it } from "vitest";
 
-import { trainingDay } from "../src/clock";
+import { localDay, trainingDay } from "../src/clock";
 
 /** A local `Date`, built from local parts, because the cutoff is local. */
 function at(year: number, month: number, day: number, hour: number, minute = 0): Date {
   return new Date(year, month - 1, day, hour, minute);
 }
+
+describe("localDay", () => {
+  it("is the plain local date, with no cutoff", () => {
+    // Where `trainingDay` would say the 24th, this says the 25th: a file saved
+    // at half past midnight belongs to the day the phone says it is.
+    expect(localDay(at(2026, 8, 25, 0, 30))).toBe("2026-08-25");
+    expect(trainingDay(at(2026, 8, 25, 0, 30))).toBe("2026-08-24");
+  });
+
+  it("zero-pads", () => {
+    expect(localDay(at(2026, 1, 5, 9))).toBe("2026-01-05");
+  });
+});
 
 describe("trainingDay", () => {
   it("formats as YYYY-MM-DD, zero-padded", () => {
