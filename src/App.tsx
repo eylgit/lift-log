@@ -51,7 +51,14 @@ export default function App() {
         </div>
       )}
 
-      {screen.name === "loading" && <p className="notice">Reading your log…</p>}
+      {/* The three screens each end with their own `grow`, which is what pins the
+          status line to the bottom. These two are not screens and need their own. */}
+      {screen.name === "loading" && (
+        <>
+          <p className="notice">Reading your log…</p>
+          <div className="grow" />
+        </>
+      )}
 
       {screen.name === "failed" && (
         <p className="notice">
@@ -61,6 +68,7 @@ export default function App() {
           <span className="detail">{screen.error.message}</span>
         </p>
       )}
+      {screen.name === "failed" && <div className="grow" />}
 
       {screen.name === "today" && (
         <TodayScreen today={screen.today} plan={screen.plan} actions={actions} />
