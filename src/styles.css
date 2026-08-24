@@ -440,3 +440,13 @@ button.quiet {
 /* --------------------------------------------------- the session detail (E1.2) */
 
 .sets .kv + .kv { margin-top: 13px; }
+
+/* A choice between two words rather than between two rep counts, so it drops
+   the picker's display size (E1.3). */
+.picker.choice .pick {
+  min-height: 62px;
+  font-family: var(--f-display);
+  font-size: 17px;
+}
+/* The app's one destructive action. Marked, not shouted. */
+.picker.choice .pick.drop { color: var(--warn); }

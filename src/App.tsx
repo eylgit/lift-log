@@ -106,7 +106,11 @@ export default function App() {
           by re-reading, so a session deleted here is gone from the list that
           comes back (E1.3). */}
       {screen.name === "detail" && (
-        <DetailScreen detail={screen.detail} onBack={actions.openHistory} />
+        <DetailScreen
+          detail={screen.detail}
+          onDelete={actions.deleteSession}
+          onBack={actions.openHistory}
+        />
       )}
 
       {screen.name === "summary" && (

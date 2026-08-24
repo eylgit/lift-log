@@ -579,7 +579,14 @@ everything after is improvement, not enablement.
   including one too old for the grid's 270-week window. Tapping a row opens the session down to
   every set, which is the only screen that shows the prescription beside the weight lifted, and
   only when the two differ.)*
-- **E1.3** Session detail with a soft-delete action (INV-3) behind a confirm.
+- **E1.3** Session detail with a soft-delete action (INV-3) behind a confirm. *(Done. The delete
+  sits at the far end of the detail screen from Back, and the first tap writes nothing — it opens
+  a confirm that names every consequence, including the one INV-3 exists for: the backup keeps a
+  note that the session was deleted, so restoring one will not bring it back. Confirming writes
+  the tombstone, **rebuilds the engine cache**, and returns to the list. The rebuild is the part
+  worth remembering: `engineState` is derived from the log and the log has just changed, so
+  deleting the session that earned the last step has to take that step with it — otherwise
+  tomorrow's card prescribes a weight nothing in the log supports (INV-2).)*
 
 ## E2 — Progress
 - **E2.1** Per-exercise sawtooth chart of working weight, hand-written SVG. No chart library.

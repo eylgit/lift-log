@@ -9,12 +9,19 @@
  * weight has nothing to explain, and printing the same number twice would turn
  * the interesting case into noise (INV-7, §6.2).
  *
+ * It is also where a session gets deleted (E1.3). The confirm is held here in
+ * `useState` rather than in the app's state machine, which is the same line the
+ * session runner draws: state about *what is open at the screen* lives at the
+ * screen, and nothing is written until the second tap.
+ *
  * A `TrainingDay` is a label rather than an instant, so the date is spelled out
  * from the string itself and never handed to `toLocaleDateString` — parsing
  * `2026-08-24` gives UTC midnight, which renders as the 23rd anywhere west of
  * Greenwich (INV-5, and the calendar arithmetic in `src/clock.ts`). The clock
  * times below it are real instants and are formatted as such.
  */
+
+import { useState } from "react";
 
 import { weekdayIndex } from "../clock";
 import type { TrainingDay } from "../engine";
@@ -32,11 +39,14 @@ const MONTHS = [
 
 export function DetailScreen({
   detail,
+  onDelete,
   onBack,
 }: {
   detail: SessionDetail;
+  onDelete: () => void;
   onBack: () => void;
 }) {
+  const [confirming, setConfirming] = useState(false);
   const overridden = detail.actualKg !== detail.prescribedKg;
 
   return (
@@ -96,11 +106,40 @@ export function DetailScreen({
 
       <div className="grow" />
 
-      {overridden && (
-        <p className="hint">
-          The weight was changed during the session. Progress is measured from
-          what was lifted, not from what was asked for.
-        </p>
+      {confirming ? (
+        <>
+          <p className="prompt">Delete this session?</p>
+          {/* Every consequence, said plainly, because this is the one action in
+              the app that takes something away. The last sentence is INV-3
+              seen from the outside: the tombstone is what stops a restored
+              backup putting the session back. */}
+          <p className="hint">
+            It goes from the calendar, the list and the chart, and the weight
+            for this lift is worked out again without it. Your backups keep a
+            note that it was deleted, so restoring one will not bring it back.
+          </p>
+          <div className="picker choice">
+            <button className="pick" onClick={() => setConfirming(false)}>
+              Keep it
+            </button>
+            <button className="pick drop" onClick={onDelete}>
+              Delete
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          {overridden && (
+            <p className="hint">
+              The weight was changed during the session. Progress is measured
+              from what was lifted, not from what was asked for.
+            </p>
+          )}
+          {/* Small, and at the far end of the screen from Back. */}
+          <button className="missed" onClick={() => setConfirming(true)}>
+            Delete this session
+          </button>
+        </>
       )}
     </>
   );

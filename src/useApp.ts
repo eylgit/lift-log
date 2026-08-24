@@ -23,7 +23,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Format } from "./backup";
 import { saveFile } from "./backup";
 import { trainingDay } from "./clock";
-import { exportCsv, exportJson, openRepo } from "./db";
+import { exportCsv, exportJson, openRepo, rebuildState } from "./db";
 import type { Exercise, ExerciseId, OutcomeResult, SessionId, Side } from "./engine";
 import type { History, SessionDetail } from "./history";
 import { loadDetail, loadHistory } from "./history";
@@ -124,6 +124,8 @@ export type Actions = {
   readonly openHistory: () => void;
   /** Open one logged session, down to every set (E1.2). */
   readonly openDetail: (id: SessionId) => void;
+  /** Tombstone the session on screen and go back to the list (E1.3, INV-3). */
+  readonly deleteSession: () => void;
 
   /* ------------------------------------------------------- backup (F1) */
 
@@ -327,6 +329,32 @@ export function useApp(): readonly [Screen, Actions] {
     [run],
   );
 
+  /**
+   * Delete the session on screen (E1.3).
+   *
+   * Three steps and the middle one is the point. The tombstone is written
+   * (INV-3), then the engine cache is rebuilt, then the list is re-read. The
+   * cache is derived from the log and the log has just changed underneath it:
+   * delete last week's clean session and the weight it earned is still sitting
+   * in `engineState`, so tomorrow's card would prescribe a number that nothing
+   * in the log supports (INV-2). `rebuildState` is the function that exists to
+   * say that out loud, and it filters tombstones because every read does.
+   *
+   * It takes no argument for the same reason `finish` does not: the session it
+   * acts on is the one on the screen, and passing an id would invite acting on
+   * a different one.
+   */
+  const deleteSession = useCallback(() => {
+    void run(async () => {
+      const here = current.current;
+      if (here.name !== "detail") return here;
+      const repo = await openRepo();
+      await repo.softDeleteSession(here.detail.id, new Date().toISOString());
+      await rebuildState(repo);
+      return { name: "history", history: await loadHistory(repo, trainingDay()) };
+    });
+  }, [run]);
+
   /* ----------------------------------------------------------- backup (F1) */
 
   const readBackup = useCallback(async (over: Partial<BackupState> = {}): Promise<Screen> => {
@@ -508,6 +536,7 @@ export function useApp(): readonly [Screen, Actions] {
       flipSide,
       openHistory,
       openDetail,
+      deleteSession,
       openBackup,
       download,
     },

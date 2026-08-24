@@ -1,5 +1,5 @@
 /**
- * E1.1 — the calendar heat map, and E1.2 — the log beneath it.
+ * E1.1 — the calendar heat map, E1.2 — the log beneath it, E1.3 — deleting.
  *
  * Two halves, and they are different questions. The first is arithmetic: given
  * a handful of days and a date for "today", does the grid come out as whole
@@ -18,6 +18,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { addDays, startOfWeek, weekdayIndex } from "../src/clock";
 import { openDexieRepo } from "../src/db/dexie-repo";
+import { rebuildState } from "../src/db/replay";
 import type { LoggedSession, Repo } from "../src/db/repo";
 import type { Exercise, Session, SetLog, TrainingDay } from "../src/engine";
 import type { DayCell, DaySummary, HeatMap } from "../src/history";
@@ -506,5 +507,99 @@ describe("the list reads the log", () => {
 
   it("has nothing to show for a session that never existed", async () => {
     expect(await loadDetail(repo, "nobody")).toBeNull();
+  });
+});
+
+/* ------------------------------------------------------ deleting one (E1.3) */
+
+describe("deleting a session", () => {
+  let repo: Repo;
+  let dbCount = 0;
+
+  beforeEach(async () => {
+    repo = await openDexieRepo(`lift-log-delete-${(dbCount += 1)}`);
+  });
+
+  /** Three clean sessions of the same lift, a step apart, oldest first. */
+  async function threeCleanSessions() {
+    for (const [i, kg] of [20, 21, 22].entries()) {
+      const session = sessionOf({
+        id: `s${i}`,
+        trainingDay: addDays(TODAY, i - 4),
+        prescribedKg: kg,
+        actualKg: kg,
+      });
+      await repo.appendSession(session);
+      await repo.appendSets(setsOf(session.id, CLEAN));
+    }
+  }
+
+  it("puts the weight back where it was before that session", async () => {
+    // The exit criterion for Part E, and the reason the delete rebuilds the
+    // cache rather than only writing a tombstone. `engineState` is derived from
+    // the log (INV-2); delete the session that earned the last step and the
+    // weight it earned has to go with it.
+    await threeCleanSessions();
+
+    const before = await rebuildState(repo);
+    expect(before.find((s) => s.exerciseId === "split-squat")?.currentKg).toBe(23);
+
+    await repo.softDeleteSession("s2", `${TODAY}T09:00:00.000Z`);
+    const after = await rebuildState(repo);
+
+    expect(after.find((s) => s.exerciseId === "split-squat")?.currentKg).toBe(22);
+  });
+
+  it("takes it out of the calendar and the list at the same time", async () => {
+    await threeCleanSessions();
+    await repo.softDeleteSession("s2", `${TODAY}T09:00:00.000Z`);
+
+    const { heat, log } = await loadHistory(repo, TODAY);
+
+    expect(cellFor(heat, addDays(TODAY, -2))?.outcome).toBeNull();
+    expect(log.map((row) => row.id)).toEqual(["s1", "s0"]);
+    expect(heat.sessions).toBe(2);
+  });
+
+  it("leaves the sessions around it exactly as they were", async () => {
+    // A tombstone is not a rewrite. Deleting the middle session must not
+    // disturb what the others say about themselves.
+    await threeCleanSessions();
+    const before = await loadDetail(repo, "s0");
+
+    await repo.softDeleteSession("s1", `${TODAY}T09:00:00.000Z`);
+
+    expect(await loadDetail(repo, "s0")).toEqual(before);
+    expect((await loadDetail(repo, "s2"))?.actualKg).toBe(22);
+  });
+
+  it("keeps the deletion in the backup, so a restore does not resurrect it", async () => {
+    // What the confirm on the screen promises. The row stays and carries its
+    // tombstone; `snapshot()` is the one read that returns it (INV-3, C4.1).
+    await threeCleanSessions();
+    await repo.softDeleteSession("s2", `${TODAY}T09:00:00.000Z`);
+
+    const snapshot = await repo.snapshot();
+    const deleted = snapshot.sessions.find((session) => session.id === "s2");
+
+    expect(snapshot.sessions).toHaveLength(3);
+    expect(deleted?.deletedAt).toBe(`${TODAY}T09:00:00.000Z`);
+  });
+
+  it("deletes the only session in the log without leaving a weight behind", async () => {
+    // The lift goes back to never having been trained, which is its start
+    // weight rather than the weight the deleted session earned.
+    const session = sessionOf({ id: "only", prescribedKg: 20, actualKg: 20 });
+    await repo.appendSession(session);
+    await repo.appendSets(setsOf(session.id, CLEAN));
+    await rebuildState(repo);
+
+    await repo.softDeleteSession("only", `${TODAY}T09:00:00.000Z`);
+    const after = await rebuildState(repo);
+
+    const exercises = await repo.listExercises();
+    const start = exercises.find((e) => e.id === "split-squat")!.startKg;
+    expect(after.find((s) => s.exerciseId === "split-squat")?.currentKg).toBe(start);
+    expect((await loadHistory(repo, TODAY)).log).toEqual([]);
   });
 });
