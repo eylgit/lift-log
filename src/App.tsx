@@ -1,12 +1,20 @@
 import { useEffect, useState } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
-import { ROTATION, SCHEME, trainingDay } from "./plan";
+import { trainingDay } from "./clock";
+import type { Today } from "./today";
+import { useToday } from "./useToday";
 
-/** Day of the rotation. M1 replaces this with a pointer read from the log. */
+/**
+ * Day of the rotation.
+ *
+ * Still a constant, and the last thing on this card that is. D1.3 replaces it
+ * with a pointer counted off the log — position, not date, so a missed day is
+ * simply a day and the next lift is still the next lift (INV-6).
+ */
 const DAY_INDEX = 2;
 
 export default function App() {
-  const lift = ROTATION[DAY_INDEX]!;
+  const view = useToday(DAY_INDEX);
   const [online, setOnline] = useState(navigator.onLine);
   const [persisted, setPersisted] = useState<boolean | null>(null);
 
@@ -40,38 +48,16 @@ export default function App() {
         </div>
       )}
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span className="eyebrow">Day {DAY_INDEX + 1} of {ROTATION.length}</span>
-        <span className="rotation">
-          {ROTATION.map((e, i) => (
-            <i key={e.id} className={i === DAY_INDEX ? "on" : undefined} />
-          ))}
-        </span>
-      </div>
-
-      <h1 className="lift">{lift.name}</h1>
-      <div className="eyebrow" style={{ marginTop: 9 }}>
-        {lift.pattern} · {lift.weakSide} side first
-      </div>
-
-      <div className="load">
-        <span className="kg">{lift.weightKg}</span>
-        <span className="unit">kg</span>
-      </div>
-      <div className="scheme">
-        {SCHEME.repsPerSide} reps per side × {SCHEME.sets} sets
-      </div>
-
-      <div className="rule" />
-
-      <div className="kv">
-        <span className="k">REST</span>
-        <span className="v">{SCHEME.restMinutes} min between sets</span>
-      </div>
-      <div className="kv">
-        <span className="k">TRAINING DAY</span>
-        <span className="v">{trainingDay()}</span>
-      </div>
+      {view.status === "loading" && <p className="notice">Reading your log…</p>}
+      {view.status === "failed" && (
+        <p className="notice">
+          Lift Log could not open its database, so it does not know what you are lifting today.
+          Nothing has been lost — reload, and if that does not help, check whether this browser is
+          in a private window.
+          <span className="detail">{view.error.message}</span>
+        </p>
+      )}
+      {view.status === "ready" && <Card today={view.today} />}
 
       <div className="grow" />
 
@@ -81,7 +67,7 @@ export default function App() {
         </svg>
         Start
       </button>
-      <p className="footnote">The session runner lands in M2.</p>
+      <p className="footnote">The session runner lands in D2.</p>
 
       <div className="status">
         <span className={online ? "dot" : "dot off"} />
@@ -93,5 +79,54 @@ export default function App() {
         </span>
       </div>
     </div>
+  );
+}
+
+/**
+ * The card itself — every number on it derived, none of it hardcoded.
+ *
+ * The weight is the engine's answer for this lift given everything in the log,
+ * which on a fresh install is the start weight and nothing else. D1.2 fills the
+ * card out; this is the same card as before with the placeholder rotation
+ * pulled out from under it.
+ */
+function Card({ today }: { today: Today }) {
+  const { prescription: rx, dayIndex, rotationLength } = today;
+
+  return (
+    <>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span className="eyebrow">Day {dayIndex + 1} of {rotationLength}</span>
+        <span className="rotation">
+          {Array.from({ length: rotationLength }, (_, i) => (
+            <i key={i} className={i === dayIndex ? "on" : undefined} />
+          ))}
+        </span>
+      </div>
+
+      <h1 className="lift">{rx.exercise.name}</h1>
+      <div className="eyebrow" style={{ marginTop: 9 }}>
+        {rx.exercise.pattern} · {rx.weakSide} side first
+      </div>
+
+      <div className="load">
+        <span className="kg">{rx.weightKg}</span>
+        <span className="unit">kg</span>
+      </div>
+      <div className="scheme">
+        {rx.repsPerSide} reps per side × {rx.sets} sets
+      </div>
+
+      <div className="rule" />
+
+      <div className="kv">
+        <span className="k">REST</span>
+        <span className="v">{rx.restMinutes} min between sets</span>
+      </div>
+      <div className="kv">
+        <span className="k">TRAINING DAY</span>
+        <span className="v">{trainingDay()}</span>
+      </div>
+    </>
   );
 }

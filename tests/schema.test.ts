@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   DEFAULT_EQUIPMENT,
+  DEFAULT_ROTATION,
   DEFAULT_SETTINGS,
   LiftLogDb,
   SCHEMA_VERSION,
@@ -96,6 +97,33 @@ describe("ensureDefaults", () => {
     expect(settings?.units).toBe("lb");
     await expect(db.equipment.count()).resolves.toBe(1);
     await expect(db.settings.count()).resolves.toBe(1);
+  });
+
+  it("seeds the rotation, in order, on a fresh database", async () => {
+    await ensureDefaults(db);
+
+    const rows = (await db.exercise.toArray()).sort((a, b) => a.order - b.order);
+    expect(rows).toEqual([...DEFAULT_ROTATION]);
+  });
+
+  it("starts every lift at one step — onboarding's default, and the safe one", async () => {
+    await ensureDefaults(db);
+
+    const rows = await db.exercise.toArray();
+    expect(rows.every((row) => row.startKg === DEFAULT_STEP_KG)).toBe(true);
+  });
+
+  it("does not put back a lift the athlete removed from the rotation", async () => {
+    // The rotation is seeded whole or not at all. Merging row by row would
+    // undo `saveRotation` on the next open, and there would be no way to
+    // refuse — see the note on `ensureDefaults`.
+    await ensureDefaults(db);
+    await db.exercise.delete("bench");
+
+    await ensureDefaults(db);
+
+    await expect(db.exercise.count()).resolves.toBe(DEFAULT_ROTATION.length - 1);
+    await expect(db.exercise.get("bench")).resolves.toBeUndefined();
   });
 
   it("keeps the singleton tables to one row", async () => {

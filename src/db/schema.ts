@@ -120,6 +120,33 @@ export class LiftLogDb extends Dexie {
 
 /* -------------------------------------------------------------- defaults */
 
+/**
+ * The rotation a fresh install starts with (G1).
+ *
+ * Five lifts, one per movement pattern, in the order they come round. Every
+ * `startKg` is one step, which is what onboarding will default them to and for
+ * the same reason: the only start weight that cannot be wrong is one that is
+ * absurdly light (G1.2, and the note on `Exercise.startKg`). The athlete moves
+ * it, either through onboarding or by tapping the weight on the Today card
+ * (INV-7, D5) — until then the card honestly reads `1 kg` and says the lift has
+ * never been trained.
+ *
+ * The weak sides are a guess for the same reason and flip with a tap. Left is
+ * the default because it is the non-dominant side for most people, which is the
+ * same answer onboarding gives to "I don't know".
+ *
+ * This exists because Part D has to run on *something* and Part G is where the
+ * athlete is actually asked. `saveRotation` replaces the lot, so nothing here
+ * survives onboarding — it is a starting position, not a preference.
+ */
+export const DEFAULT_ROTATION: readonly ExerciseRow[] = [
+  { id: "split-squat", name: "Bulgarian Split Squat",     pattern: "squat",           videoQuery: "bulgarian split squat form",     startKg: DEFAULT_STEP_KG, weakSide: "left",  order: 0 },
+  { id: "press",       name: "Single-Arm Shoulder Press", pattern: "vertical push",   videoQuery: "single arm dumbbell press form", startKg: DEFAULT_STEP_KG, weakSide: "left",  order: 1 },
+  { id: "deadlift",    name: "Single-Leg Deadlift",       pattern: "hip hinge",       videoQuery: "single leg romanian deadlift",   startKg: DEFAULT_STEP_KG, weakSide: "left",  order: 2 },
+  { id: "bench",       name: "Single-Arm Bench Press",    pattern: "horizontal push", videoQuery: "single arm dumbbell bench press",startKg: DEFAULT_STEP_KG, weakSide: "left",  order: 3 },
+  { id: "row",         name: "Single-Arm Row",            pattern: "horizontal pull", videoQuery: "single arm dumbbell row form",   startKg: DEFAULT_STEP_KG, weakSide: "left",  order: 4 },
+];
+
 /** The equipment row a fresh install starts with (G1). */
 export const DEFAULT_EQUIPMENT: EquipmentRow = {
   id: SINGLETON_ID,
@@ -140,9 +167,19 @@ export const DEFAULT_SETTINGS: SettingsRow = {
  * Write the setup rows if they are absent, and leave them alone if they are
  * not. Safe to call on every startup: it is how a fresh database acquires its
  * defaults without a separate install step, and a no-op thereafter.
+ *
+ * The rotation is seeded on the same terms, and the test is "is the table
+ * empty" rather than "is this lift missing". Merging row by row would put a
+ * lift back after the athlete dropped it from the rotation, on the next open,
+ * with no way to refuse — `saveRotation` says array position is rotation
+ * position and a five-row table is the whole statement (C2.1). An empty table
+ * is the one state that cannot be a decision anyone made.
  */
 export async function ensureDefaults(db: LiftLogDb): Promise<void> {
-  await db.transaction("rw", db.equipment, db.settings, async () => {
+  await db.transaction("rw", db.exercise, db.equipment, db.settings, async () => {
+    if ((await db.exercise.count()) === 0) {
+      await db.exercise.bulkAdd([...DEFAULT_ROTATION]);
+    }
     if ((await db.equipment.get(SINGLETON_ID)) === undefined) {
       await db.equipment.add(DEFAULT_EQUIPMENT);
     }
