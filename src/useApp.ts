@@ -24,9 +24,9 @@ import type { Format } from "./backup";
 import { saveFile } from "./backup";
 import { trainingDay } from "./clock";
 import { exportCsv, exportJson, openRepo } from "./db";
-import type { Exercise, ExerciseId, OutcomeResult, Side } from "./engine";
-import type { History } from "./history";
-import { loadHistory } from "./history";
+import type { Exercise, ExerciseId, OutcomeResult, SessionId, Side } from "./engine";
+import type { History, SessionDetail } from "./history";
+import { loadDetail, loadHistory } from "./history";
 import type { SessionView } from "./session";
 import {
   closeSession,
@@ -77,7 +77,8 @@ export type Screen =
       readonly outcome: OutcomeResult;
     }
   | { readonly name: "backup"; readonly state: BackupState }
-  | { readonly name: "history"; readonly history: History };
+  | { readonly name: "history"; readonly history: History }
+  | { readonly name: "detail"; readonly detail: SessionDetail };
 
 /** Today's session as the athlete has adjusted it. */
 export type Plan = {
@@ -119,8 +120,10 @@ export type Actions = {
 
   /* ------------------------------------------------------ history (E1) */
 
-  /** Open the history calendar. */
+  /** Open the history calendar and the log beneath it. */
   readonly openHistory: () => void;
+  /** Open one logged session, down to every set (E1.2). */
+  readonly openDetail: (id: SessionId) => void;
 
   /* ------------------------------------------------------- backup (F1) */
 
@@ -300,6 +303,29 @@ export function useApp(): readonly [Screen, Actions] {
       return { name: "history", history: await loadHistory(repo, trainingDay()) };
     });
   }, [run]);
+
+  /**
+   * Open one session from the list.
+   *
+   * A session that is not there any more sends the athlete back to the list
+   * rather than to an empty screen. The only way to reach that is a row tapped
+   * from a list built before the session was deleted — from another tab, or
+   * from an import — and the right answer is the list as it now stands, which
+   * no longer has the row in it (INV-3, and `loadDetail`).
+   */
+  const openDetail = useCallback(
+    (id: SessionId) => {
+      void run(async () => {
+        const repo = await openRepo();
+        const detail = await loadDetail(repo, id);
+        if (detail === null) {
+          return { name: "history", history: await loadHistory(repo, trainingDay()) };
+        }
+        return { name: "detail", detail };
+      });
+    },
+    [run],
+  );
 
   /* ----------------------------------------------------------- backup (F1) */
 
@@ -481,6 +507,7 @@ export function useApp(): readonly [Screen, Actions] {
       chooseRest,
       flipSide,
       openHistory,
+      openDetail,
       openBackup,
       download,
     },

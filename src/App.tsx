@@ -9,6 +9,7 @@
 import { useEffect, useState } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { BackupScreen } from "./screens/Backup";
+import { DetailScreen } from "./screens/Detail";
 import { HistoryScreen } from "./screens/History";
 import { SessionScreen } from "./screens/Session";
 import { SummaryScreen } from "./screens/Summary";
@@ -93,7 +94,19 @@ export default function App() {
       )}
 
       {screen.name === "history" && (
-        <HistoryScreen heat={screen.history.heat} onBack={actions.dismiss} />
+        <HistoryScreen
+          heat={screen.history.heat}
+          log={screen.history.log}
+          onOpen={actions.openDetail}
+          onBack={actions.dismiss}
+        />
+      )}
+
+      {/* Back goes to the list it was opened from, not to Today — and it goes
+          by re-reading, so a session deleted here is gone from the list that
+          comes back (E1.3). */}
+      {screen.name === "detail" && (
+        <DetailScreen detail={screen.detail} onBack={actions.openHistory} />
       )}
 
       {screen.name === "summary" && (

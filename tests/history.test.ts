@@ -1,5 +1,5 @@
 /**
- * E1.1 — the calendar heat map.
+ * E1.1 — the calendar heat map, and E1.2 — the log beneath it.
  *
  * Two halves, and they are different questions. The first is arithmetic: given
  * a handful of days and a date for "today", does the grid come out as whole
@@ -19,9 +19,17 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { addDays, startOfWeek, weekdayIndex } from "../src/clock";
 import { openDexieRepo } from "../src/db/dexie-repo";
 import type { LoggedSession, Repo } from "../src/db/repo";
-import type { Session, SetLog, TrainingDay } from "../src/engine";
+import type { Exercise, Session, SetLog, TrainingDay } from "../src/engine";
 import type { DayCell, DaySummary, HeatMap } from "../src/history";
-import { buildHeatMap, loadHistory, summariseDays } from "../src/history";
+import {
+  buildHeatMap,
+  detailOf,
+  groupSets,
+  listLog,
+  loadDetail,
+  loadHistory,
+  summariseDays,
+} from "../src/history";
 
 /* ------------------------------------------------------------- fixtures */
 
@@ -63,6 +71,18 @@ function logged(over: Partial<Session> & { id: string }, done = CLEAN): LoggedSe
   const session = sessionOf(over);
   return { session, sets: setsOf(session.id, done) };
 }
+
+/** The rotation, as far as anything here cares: one lift with a name. */
+const ROTATION: readonly Exercise[] = [
+  {
+    id: "split-squat",
+    name: "Bulgarian Split Squat",
+    pattern: "squat",
+    videoQuery: "bulgarian split squat form",
+    startKg: 1,
+    weakSide: "left",
+  },
+];
 
 /** The square for one day, or undefined if it is outside the grid. */
 function cellFor(heat: HeatMap, day: TrainingDay): DayCell | undefined {
@@ -270,5 +290,221 @@ describe("the calendar reads the log", () => {
 
     expect(heat.weeks).toHaveLength(4);
     expect(heat.weeks.flat().every((cell) => cell === null || cell.outcome === null)).toBe(true);
+  });
+});
+
+/* ------------------------------------------------------------ the list (E1.2) */
+
+describe("listLog", () => {
+  it("puts the newest session at the top", () => {
+    // `readLog` hands them over oldest first. The list is the other way round,
+    // because the question a list answers is "what did I do lately".
+    const rows = listLog(
+      [
+        logged({ id: "old", trainingDay: addDays(TODAY, -4) }),
+        logged({ id: "new", trainingDay: TODAY }),
+      ],
+      ROTATION,
+    );
+
+    expect(rows.map((row) => row.id)).toEqual(["new", "old"]);
+  });
+
+  it("keeps two sessions on one day in the order they were trained", () => {
+    // Reversing a total order is still a total order. The later of the two is
+    // the more recent, so it goes above the earlier one.
+    const rows = listLog(
+      [
+        logged({ id: "first", startedAt: `${TODAY}T08:00:00.000Z` }),
+        logged({ id: "second", startedAt: `${TODAY}T18:00:00.000Z` }),
+      ],
+      ROTATION,
+    );
+
+    expect(rows.map((row) => row.id)).toEqual(["second", "first"]);
+  });
+
+  it("leaves a session that is still open out of the list", () => {
+    // The same rule the grid applies. An open session has not happened yet.
+    expect(listLog([logged({ id: "s1", status: "planned" }, [5, 5])], ROTATION)).toEqual([]);
+  });
+
+  it("shows what was lifted, not what was asked for (INV-7)", () => {
+    const [row] = listLog([logged({ id: "s1", prescribedKg: 22, actualKg: 20 })], ROTATION);
+
+    expect(row!.weightKg).toBe(20);
+  });
+
+  it("names the lift from the rotation", () => {
+    const [row] = listLog([logged({ id: "s1" })], ROTATION);
+
+    expect(row!.exercise).toBe("Bulgarian Split Squat");
+  });
+
+  it("falls back to the id for a lift that has left the rotation", () => {
+    // Nothing in the app drops a lift, but an imported file can carry a session
+    // for one. A row reading `undefined` would be worse than a row reading the
+    // id it actually has.
+    const [row] = listLog([logged({ id: "s1", exerciseId: "front-squat" })], ROTATION);
+
+    expect(row!.exercise).toBe("front-squat");
+  });
+
+  it("says how short a short session was (INV-4)", () => {
+    // Two reps missing on one side, one on another. "short" alone does not say
+    // whether that was a near miss or a collapse.
+    const [row] = listLog([logged({ id: "s1" }, [5, 3, 4, 5, 5, 5])], ROTATION);
+
+    expect(row!.outcome).toBe("short");
+    expect(row!.repsShort).toBe(3);
+  });
+
+  it("charges a walked-out session for the reps it missed, not the sets it never did", () => {
+    // One set of a planned three, both sides clean, then the athlete left. The
+    // walking out is already the outcome; counting the four absent sides as
+    // twenty missed reps would charge for it twice.
+    const [row] = listLog([logged({ id: "s1", status: "abandoned" }, [5, 5])], ROTATION);
+
+    expect(row!.outcome).toBe("walked out");
+    expect(row!.repsShort).toBe(0);
+  });
+
+  it("lists a session the grid is too short to show", () => {
+    // The grid stops at 270 weeks because it must draw a square for every day
+    // in its window. The list draws one row per session, so a mistyped year
+    // costs one row.
+    const rows = listLog([logged({ id: "s1", trainingDay: "1926-08-24" })], ROTATION);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.trainingDay).toBe("1926-08-24");
+  });
+});
+
+/* ------------------------------------------------ sets, folded back into sets */
+
+describe("groupSets", () => {
+  it("pairs the two sides of each set", () => {
+    const sets = groupSets(setsOf("s1", CLEAN));
+
+    expect(sets.map((set) => set.setNumber)).toEqual([1, 2, 3]);
+    expect(sets.every((set) => set.sides.length === 2)).toBe(true);
+  });
+
+  it("leaves a half-logged set as half a set", () => {
+    // Walked out between the two sides. Inventing a zero for the side that was
+    // never done would be recording a rep count nobody performed.
+    const sets = groupSets(setsOf("s1", [5, 5, 5]));
+
+    expect(sets).toHaveLength(2);
+    expect(sets[1]!.sides).toHaveLength(1);
+    expect(sets[1]!.sides[0]!.side).toBe("left");
+  });
+
+  it("shows the side that was recorded, not the one the rotation predicted", () => {
+    // D5.5: the athlete corrected the side mid-session. The log is the record
+    // of what happened, and the screen reads the row.
+    const rows = setsOf("s1", [5, 5]).map((set, i) =>
+      i === 0 ? { ...set, side: "right" as const } : set,
+    );
+
+    expect(groupSets(rows)[0]!.sides.map((side) => side.side)).toEqual(["right", "right"]);
+  });
+
+  it("sorts by ordinal rather than trusting the order it was handed", () => {
+    const sets = groupSets([...setsOf("s1", CLEAN)].reverse());
+
+    expect(sets[0]!.sides[0]!.doneReps).toBe(5);
+    expect(sets.map((set) => set.setNumber)).toEqual([1, 2, 3]);
+  });
+
+  it("has nothing to say about a session with no sets", () => {
+    expect(groupSets([])).toEqual([]);
+  });
+});
+
+/* -------------------------------------------------------- one session (E1.2) */
+
+describe("detailOf", () => {
+  it("totals the reps against what they were measured by", () => {
+    const detail = detailOf(logged({ id: "s1" }, [5, 3, 5, 5, 5, 5]), ROTATION);
+
+    expect(detail.reps).toBe(28);
+    expect(detail.targetReps).toBe(30);
+    expect(detail.outcome).toBe("short");
+  });
+
+  it("keeps the prescription beside the weight that was lifted (INV-7)", () => {
+    // The one screen that shows both. It is where "why did the weight not go
+    // up" gets answered, and sometimes the answer is that it was overridden.
+    const detail = detailOf(logged({ id: "s1", prescribedKg: 22, actualKg: 20 }), ROTATION);
+
+    expect(detail.prescribedKg).toBe(22);
+    expect(detail.actualKg).toBe(20);
+  });
+
+  it("gives an open session no outcome at all", () => {
+    const detail = detailOf(logged({ id: "s1", status: "planned" }, [5, 5]), ROTATION);
+
+    expect(detail.outcome).toBeNull();
+    expect(detail.status).toBe("planned");
+  });
+});
+
+/* -------------------------------------------- the list against a real database */
+
+describe("the list reads the log", () => {
+  let repo: Repo;
+  let dbCount = 0;
+
+  beforeEach(async () => {
+    repo = await openDexieRepo(`lift-log-log-${(dbCount += 1)}`);
+  });
+
+  async function write(session: Session, done: readonly number[]) {
+    await repo.appendSession(session);
+    if (done.length > 0) await repo.appendSets(setsOf(session.id, done));
+  }
+
+  it("lists a session with the name the rotation gives it", async () => {
+    await write(sessionOf({ id: "s1", trainingDay: addDays(TODAY, -2) }), CLEAN);
+
+    const { log } = await loadHistory(repo, TODAY);
+
+    expect(log).toHaveLength(1);
+    expect(log[0]!.exercise).toBe("Bulgarian Split Squat");
+    expect(log[0]!.outcome).toBe("clean");
+  });
+
+  it("drops a deleted session from the list (INV-3)", async () => {
+    await write(sessionOf({ id: "s1" }), CLEAN);
+    await repo.softDeleteSession("s1", `${TODAY}T09:00:00.000Z`);
+
+    const { log } = await loadHistory(repo, TODAY);
+
+    expect(log).toEqual([]);
+  });
+
+  it("opens one session down to every set", async () => {
+    await write(sessionOf({ id: "s1" }), [5, 5, 5, 4, 5, 5]);
+
+    const detail = await loadDetail(repo, "s1");
+
+    expect(detail?.exercise).toBe("Bulgarian Split Squat");
+    expect(detail?.sets).toHaveLength(3);
+    expect(detail?.sets[1]!.sides[1]!.doneReps).toBe(4);
+    expect(detail?.outcome).toBe("short");
+  });
+
+  it("has nothing to show for a session that was deleted (INV-3)", async () => {
+    // Reachable by tapping a row on a list built before the delete. Null rather
+    // than a throw: the session is not there, which is not a fault.
+    await write(sessionOf({ id: "s1" }), CLEAN);
+    await repo.softDeleteSession("s1", `${TODAY}T09:00:00.000Z`);
+
+    expect(await loadDetail(repo, "s1")).toBeNull();
+  });
+
+  it("has nothing to show for a session that never existed", async () => {
+    expect(await loadDetail(repo, "nobody")).toBeNull();
   });
 });

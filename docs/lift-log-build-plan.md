@@ -570,7 +570,15 @@ everything after is improvement, not enablement.
   against one mistyped date in an imported file asking for fifty thousand squares. Days after
   today are holes rather than empty squares. Reached from a new `HISTORY` row on the Today card.
   Nothing on the screen is a streak.)*
-- **E1.2** Reverse-chronological session list, tappable through to every set.
+- **E1.2** Reverse-chronological session list, tappable through to every set. *(Done. The list
+  sits under the calendar on the same screen and comes out of the same read of the log — one
+  row per session: the day, the lift, what was actually on the dumbbell, and how it went, with
+  the deficit beside "short" because the word alone does not say whether it was one rep or ten.
+  The outcome carries the calendar's own square, so a row and its day are visibly the same fact.
+  The year is written once where it changes rather than on every row. Every session is listed,
+  including one too old for the grid's 270-week window. Tapping a row opens the session down to
+  every set, which is the only screen that shows the prescription beside the weight lifted, and
+  only when the two differ.)*
 - **E1.3** Session detail with a soft-delete action (INV-3) behind a confirm.
 
 ## E2 — Progress

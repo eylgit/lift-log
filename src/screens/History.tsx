@@ -1,17 +1,24 @@
 /**
- * History — the calendar (E1.1).
+ * History — the calendar (E1.1) and the log beneath it (E1.2).
  *
- * The whole screen is one grid of squares and a sentence saying what they mean.
- * It is deliberately not a dashboard: there is no streak, no "this week" target
- * and no percentage, because every one of those is a number that falls when you
- * rest and the design says plainly that the app never does that (§5, and the
- * header of `src/history.ts`).
+ * Two views of one read: a grid of squares saying which days were trained, and
+ * a list saying what was lifted on them. It is deliberately not a dashboard:
+ * there is no streak, no "this week" target and no percentage, because every one
+ * of those is a number that falls when you rest and the design says plainly that
+ * the app never does that (§5, and the header of `src/history.ts`).
+ *
+ * The list is the whole log rather than the last N. A row is four short strings
+ * and two hundred of them is a page of text, which a phone scrolls through
+ * faster than the athlete could decide what "the last twenty" should have meant.
  *
  * The wording lives here and the shapes live in `src/history.ts`, the same
  * split as Today — a sentence can be rewritten without touching a rule.
  */
 
-import type { DayCell, DayOutcome, HeatMap } from "../history";
+import { Fragment } from "react";
+
+import type { DayCell, DayOutcome, HeatMap, SessionRow } from "../history";
+import type { SessionId, TrainingDay } from "../engine";
 
 /** Monday first, matching `weekdayIndex`. Initials, because seven must fit. */
 export const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"] as const;
@@ -21,7 +28,17 @@ const MONTHS = [
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ] as const;
 
-export function HistoryScreen({ heat, onBack }: { heat: HeatMap; onBack: () => void }) {
+export function HistoryScreen({
+  heat,
+  log,
+  onOpen,
+  onBack,
+}: {
+  heat: HeatMap;
+  log: readonly SessionRow[];
+  onOpen: (id: SessionId) => void;
+  onBack: () => void;
+}) {
   return (
     <>
       <div className="row">
@@ -75,6 +92,32 @@ export function HistoryScreen({ heat, onBack }: { heat: HeatMap; onBack: () => v
         <span className="cal-cell clean" /> clean
       </div>
 
+      {log.length > 0 && (
+        <>
+          <div className="rule" />
+          <span className="eyebrow">The log</span>
+
+          <ul className="log">
+            {log.map((row, i) => (
+              <Fragment key={row.id}>
+                {yearMark(log, i, heat.to) !== null && (
+                  <li className="log-year mono">{yearMark(log, i, heat.to)}</li>
+                )}
+                <li>
+                  <button className="log-row" onClick={() => onOpen(row.id)}>
+                    <span className="log-when mono">{shortDay(row.trainingDay)}</span>
+                    <span className="log-lift">{row.exercise}</span>
+                    <span className="log-kg mono">{row.weightKg} kg</span>
+                    <span className={`cal-cell ${MARK[row.outcome]}`} aria-hidden="true" />
+                    <span className="log-mark mono">{result(row)}</span>
+                  </button>
+                </li>
+              </Fragment>
+            ))}
+          </ul>
+        </>
+      )}
+
       <div className="grow" />
 
       <p className="hint">
@@ -84,6 +127,53 @@ export function HistoryScreen({ heat, onBack }: { heat: HeatMap; onBack: () => v
       </p>
     </>
   );
+}
+
+/** The calendar's colours, so a row and its square say the same thing. */
+const MARK: Record<DayOutcome, string> = {
+  clean: "clean",
+  short: "short",
+  "walked out": "out",
+};
+
+/**
+ * How the session went, in the width of a column.
+ *
+ * "short" alone does not say whether it was one rep or ten, so the deficit
+ * rides with it (INV-4). A clean session needs no number: clean *is* the number.
+ */
+export function result(row: SessionRow): string {
+  return row.outcome === "short" && row.repsShort > 0
+    ? `short −${row.repsShort}`
+    : row.outcome;
+}
+
+/** A row's date. The year is not in it — see `yearMark`. */
+export function shortDay(day: TrainingDay): string {
+  const [, month, date] = day.split("-");
+  return `${Number(date)} ${MONTHS[Number(month) - 1] ?? month}`;
+}
+
+/**
+ * The year to write above a row, or null if the row needs none.
+ *
+ * A year on every row would repeat "2026" two hundred times and widen the date
+ * column for the two rows that are not in it. A separator says the same thing
+ * once, at the point where it changes something — reading down the list, that
+ * is the moment a row could otherwise be taken for last week.
+ *
+ * The list runs newest first, so "the year before this one" is the row below in
+ * the data and above on the screen. The first row is compared against today's
+ * year instead, which is what puts a heading on a log that ended last year.
+ */
+export function yearMark(
+  log: readonly SessionRow[],
+  index: number,
+  today: TrainingDay,
+): string | null {
+  const year = log[index]!.trainingDay.slice(0, 4);
+  const above = index === 0 ? today.slice(0, 4) : log[index - 1]!.trainingDay.slice(0, 4);
+  return year === above ? null : year;
 }
 
 /** The one number worth a headline: days trained, not days missed. */
