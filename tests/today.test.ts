@@ -19,7 +19,13 @@ import type { Repo } from "../src/db/repo";
 import { DEFAULT_ROTATION } from "../src/db/schema";
 import type { EngineState, Exercise, Session, SetLog } from "../src/engine";
 import { DEFAULT_STEP_KG, SESSION_SCHEME } from "../src/engine";
-import { describeChange, lastResultFor, loadToday, prescribeDay } from "../src/today";
+import {
+  describeChange,
+  lastResultFor,
+  loadToday,
+  nextDayIndex,
+  prescribeDay,
+} from "../src/today";
 import type { LastResult } from "../src/today";
 
 /* ------------------------------------------------------------- fixtures */
@@ -172,7 +178,7 @@ describe("a fresh install has something to prescribe", () => {
     // the start weight has to come off the exercise row.
     await expect(repo.listEngineState()).resolves.toEqual([]);
 
-    const today = await loadToday(repo, 0);
+    const today = await loadToday(repo);
 
     expect(today.prescription.exercise.id).toBe("split-squat");
     expect(today.prescription.weightKg).toBe(DEFAULT_STEP_KG);
@@ -182,17 +188,17 @@ describe("a fresh install has something to prescribe", () => {
   it("moves the weight after a clean session, because it reads the log", async () => {
     await log(sessionOf({ id: "s1", actualKg: 20 }), CLEAN);
 
-    const today = await loadToday(repo, 0);
-
     // 20 kg lifted clean, plus one step. Not the prescribed weight — what was
     // actually on the dumbbell (INV-7).
-    expect(today.prescription.weightKg).toBe(20 + DEFAULT_STEP_KG);
+    await expect(repo.getEngineState("split-squat")).resolves.toMatchObject({
+      currentKg: 20 + DEFAULT_STEP_KG,
+    });
   });
 
   /* ------------------------------------------------------- D1.2, on the card */
 
   it("says a lift has never been trained rather than inventing a last time", async () => {
-    const today = await loadToday(repo, 0);
+    const today = await loadToday(repo);
 
     expect(today.last).toBeNull();
     expect(today.change).toEqual({ kind: "first" });
@@ -201,15 +207,10 @@ describe("a fresh install has something to prescribe", () => {
   it("reports the last session and the step it earned", async () => {
     await log(sessionOf({ id: "s1", trainingDay: "2026-08-19", actualKg: 20 }), CLEAN);
 
-    const today = await loadToday(repo, 0);
-
-    expect(today.last).toEqual({
-      trainingDay: "2026-08-19",
-      weightKg: 20,
-      outcome: "clean",
-      repsShort: 0,
+    await expect(card("split-squat")).resolves.toEqual({
+      last: { trainingDay: "2026-08-19", weightKg: 20, outcome: "clean", repsShort: 0 },
+      change: { kind: "up", fromKg: 20, byKg: DEFAULT_STEP_KG, oneStep: true },
     });
-    expect(today.change).toEqual({ kind: "up", fromKg: 20, byKg: DEFAULT_STEP_KG, oneStep: true });
   });
 
   it("reports a short session, and a weight that did not move", async () => {
@@ -218,15 +219,10 @@ describe("a fresh install has something to prescribe", () => {
       [5, 5, 5, 4, 5, 3],
     );
 
-    const today = await loadToday(repo, 0);
-
-    expect(today.last).toEqual({
-      trainingDay: "2026-08-19",
-      weightKg: 20,
-      outcome: "short",
-      repsShort: 3,
+    await expect(card("split-squat")).resolves.toEqual({
+      last: { trainingDay: "2026-08-19", weightKg: 20, outcome: "short", repsShort: 3 },
+      change: { kind: "same", fromKg: 20 },
     });
-    expect(today.change).toEqual({ kind: "same", fromKg: 20 });
   });
 
   it("reports a session that was walked out of, and a weight that ignored it", async () => {
@@ -243,11 +239,34 @@ describe("a fresh install has something to prescribe", () => {
       [5, 5],
     );
 
-    const today = await loadToday(repo, 0);
+    await expect(card("split-squat")).resolves.toEqual({
+      last: {
+        trainingDay: "2026-08-19",
+        weightKg: 20 + DEFAULT_STEP_KG,
+        outcome: "walked out",
+        repsShort: 0,
+      },
+      change: { kind: "same", fromKg: 20 + DEFAULT_STEP_KG },
+    });
+  });
 
-    expect(today.last?.outcome).toBe("walked out");
+  it("puts the whole card together", async () => {
+    // The row is the last lift in the rotation, so finishing one brings the
+    // pointer round to the split squat — whose own history is what the card
+    // then has to report.
+    await log(sessionOf({ id: "s1", trainingDay: "2026-08-14", actualKg: 20 }), CLEAN);
+    await log(
+      sessionOf({ id: "s2", exerciseId: "row", trainingDay: "2026-08-18", actualKg: 30 }),
+      CLEAN,
+    );
+
+    const today = await loadToday(repo);
+
+    expect(today.prescription.exercise.id).toBe("split-squat");
+    expect(today.dayIndex).toBe(0);
     expect(today.prescription.weightKg).toBe(20 + DEFAULT_STEP_KG);
-    expect(today.change).toEqual({ kind: "same", fromKg: 20 + DEFAULT_STEP_KG });
+    expect(today.last?.trainingDay).toBe("2026-08-14");
+    expect(today.change).toEqual({ kind: "up", fromKg: 20, byKg: DEFAULT_STEP_KG, oneStep: true });
   });
 
   it("looks past a session that is still open", async () => {
@@ -310,6 +329,23 @@ describe("a fresh install has something to prescribe", () => {
     });
   });
 
+  /**
+   * The two history-shaped fields of the card, for one lift by name.
+   *
+   * `loadToday` reaches them through the rotation pointer, which by design
+   * points at the lift *after* the one just finished — so a test that wants to
+   * see a lift's own history has to ask for it directly, or spend its fixture
+   * on parking the pointer. One test below does it the long way on purpose.
+   */
+  async function card(exerciseId: string) {
+    const [last, state, equipment] = await Promise.all([
+      lastResultFor(repo, exerciseId),
+      repo.getEngineState(exerciseId),
+      repo.getEquipment(),
+    ]);
+    return { last, change: describeChange(state!.currentKg, last, equipment.stepKg) };
+  }
+
   /** `n` days after 1 June 2026, as a training day. Rolls into July. */
   function dayOfJune(n: number): string {
     return new Date(Date.UTC(2026, 5, 1 + n)).toISOString().slice(0, 10);
@@ -321,6 +357,64 @@ describe("a fresh install has something to prescribe", () => {
     if (done.length > 0) await repo.appendSets(setsOf(session.id, done));
     await rebuildState(repo);
   }
+});
+
+/* -------------------------------------------- where the rotation has got to */
+
+describe("the rotation pointer (D1.3)", () => {
+  const ids = (index: number) => ROTATION[index % ROTATION.length]!.id;
+
+  function done(exerciseId: string, over: Partial<Session> = {}): Session {
+    return sessionOf({ id: `${exerciseId}-${over.trainingDay ?? "x"}`, exerciseId, ...over });
+  }
+
+  it("starts at the first lift when nothing has been finished", () => {
+    expect(nextDayIndex(ROTATION, [])).toBe(0);
+  });
+
+  it("points at the lift after the last one finished", () => {
+    expect(nextDayIndex(ROTATION, [done(ids(0))])).toBe(1);
+    expect(nextDayIndex(ROTATION, [done(ids(0)), done(ids(1))])).toBe(2);
+  });
+
+  it("runs off the end so the ring can wrap it", () => {
+    // `prescribeDay` does the wrapping. The pointer only counts.
+    expect(nextDayIndex(ROTATION, [done(ids(2))])).toBe(3);
+    expect(prescribeDay(ROTATION, [], 3).dayIndex).toBe(0);
+  });
+
+  it("does not move for a session that was walked out of", () => {
+    const log = [done(ids(0)), done(ids(1), { status: "abandoned" })];
+
+    // Still the lift after the split squat: the press has not happened yet.
+    expect(nextDayIndex(ROTATION, log)).toBe(1);
+  });
+
+  it("does not move for a session still open", () => {
+    const log = [done(ids(0)), done(ids(1), { status: "planned", finishedAt: null })];
+
+    expect(nextDayIndex(ROTATION, log)).toBe(1);
+  });
+
+  it("counts sessions and not days, however long the gap", () => {
+    // INV-6, stated as a test: two sessions six months apart leave the pointer
+    // exactly where two sessions on consecutive days would.
+    const near = [done(ids(0), { trainingDay: "2026-08-01" }), done(ids(1), { trainingDay: "2026-08-02" })];
+    const far = [done(ids(0), { trainingDay: "2026-02-01" }), done(ids(1), { trainingDay: "2026-08-02" })];
+
+    expect(nextDayIndex(ROTATION, far)).toBe(nextDayIndex(ROTATION, near));
+  });
+
+  it("steps over a lift that has left the rotation", () => {
+    const log = [done(ids(1)), done("retired-lift", { trainingDay: "2026-08-20" })];
+
+    // The retired lift has no position to be "after", so the press's does.
+    expect(nextDayIndex(ROTATION, log)).toBe(2);
+  });
+
+  it("starts over when every finished session is for a retired lift", () => {
+    expect(nextDayIndex(ROTATION, [done("retired-lift")])).toBe(0);
+  });
 });
 
 /* ------------------------------------------------------ why this weight */

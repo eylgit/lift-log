@@ -25,7 +25,7 @@ export type TodayView =
   | { readonly status: "ready"; readonly today: Today }
   | { readonly status: "failed"; readonly error: Error };
 
-export function useToday(dayIndex: number): TodayView {
+export function useToday(): TodayView {
   const [view, setView] = useState<TodayView>({ status: "loading" });
 
   useEffect(() => {
@@ -37,7 +37,7 @@ export function useToday(dayIndex: number): TodayView {
     let live = true;
 
     openRepo()
-      .then((repo) => loadToday(repo, dayIndex))
+      .then((repo) => loadToday(repo))
       .then((today) => {
         if (live) setView({ status: "ready", today });
       })
@@ -53,7 +53,7 @@ export function useToday(dayIndex: number): TodayView {
     return () => {
       live = false;
     };
-  }, [dayIndex]);
+  }, []);
 
   return view;
 }

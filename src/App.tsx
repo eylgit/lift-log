@@ -4,17 +4,8 @@ import { trainingDay } from "./clock";
 import type { LastResult, Today, WeightChange } from "./today";
 import { useToday } from "./useToday";
 
-/**
- * Day of the rotation.
- *
- * Still a constant, and the last thing on this card that is. D1.3 replaces it
- * with a pointer counted off the log — position, not date, so a missed day is
- * simply a day and the next lift is still the next lift (INV-6).
- */
-const DAY_INDEX = 2;
-
 export default function App() {
-  const view = useToday(DAY_INDEX);
+  const view = useToday();
   const [online, setOnline] = useState(navigator.onLine);
   const [persisted, setPersisted] = useState<boolean | null>(null);
 

@@ -21,6 +21,7 @@ import type {
   Exercise,
   ExerciseId,
   Prescription,
+  Session,
   TrainingDay,
 } from "./engine";
 import { initialState, isClean, prescribe, roundKg } from "./engine";
@@ -101,6 +102,45 @@ export type Today = RotationDay & {
   readonly last: LastResult | null;
   readonly change: WeightChange;
 };
+
+/**
+ * Where the rotation has got to (D1.3).
+ *
+ * The pointer is **a position, not a date** (INV-6). It is the lift after the
+ * last one that was finished, and nothing else goes into it: not today's date,
+ * not how long ago that session was, not how many days were skipped. Miss a
+ * week and the next lift is still simply the next lift. There is no catch-up,
+ * no debt, and no screen anywhere that counts what was missed — the design is
+ * explicit that guilt is friction and friction is the enemy (§5).
+ *
+ * Like everything else in the app the pointer is derived rather than stored
+ * (INV-2). A stored "current day" would be one more thing that can disagree
+ * with the log, and it would have to be repaired after an import.
+ *
+ * Only **complete** sessions move it. A session that was walked out of teaches
+ * the engine nothing (B5.7) and it should not quietly cost the athlete a lift
+ * either: they open the app, see the same lift, and do it. That is not debt —
+ * nothing is owed and nothing accumulates — it is just a lift that has not
+ * happened yet. Repeating it is also escapable in one tap, because the lift
+ * itself is editable on Today (D5.4).
+ *
+ * A completed session for a lift that has since left the rotation is stepped
+ * over rather than counted. Its position no longer exists, so there is no "next
+ * one along" to name.
+ */
+export function nextDayIndex(
+  exercises: readonly Exercise[],
+  sessions: readonly Session[],
+): number {
+  for (let i = sessions.length - 1; i >= 0; i -= 1) {
+    const session = sessions[i]!;
+    if (session.status !== "complete") continue;
+    const position = exercises.findIndex((e) => e.id === session.exerciseId);
+    if (position !== -1) return position + 1;
+  }
+  // Nothing finished yet: the rotation starts at its first lift.
+  return 0;
+}
 
 /**
  * The prescription for one position in the rotation.
@@ -223,20 +263,25 @@ export async function lastResultFor(
 /**
  * Read what the card needs and assemble it.
  *
- * The rotation and the cache come first because the second read depends on
- * which lift they name. The log is not consulted for the *weight* — the cache
+ * The rotation, the cache and the log come first because the last read depends
+ * on which lift they name between them. The log is not consulted for the *weight* — the cache
  * is the log already folded up (INV-2), and `openRepo` has rebuilt it from the
  * log if the two could have drifted (C3.2). It is consulted for what happened
  * last time, which is a fact no cache holds.
  */
-export async function loadToday(repo: Repo, dayIndex: number): Promise<Today> {
-  const [exercises, states, equipment] = await Promise.all([
+export async function loadToday(repo: Repo): Promise<Today> {
+  const [exercises, states, equipment, sessions] = await Promise.all([
     repo.listExercises(),
     repo.listEngineState(),
     repo.getEquipment(),
+    // The whole log, for the pointer. A year is a few hundred rows read in one
+    // go (§7), and the alternative — asking for the last few and hoping the
+    // most recent completed session is among them — is wrong exactly when
+    // somebody comes back from a run of abandoned sessions.
+    repo.listSessions(),
   ]);
 
-  const day = prescribeDay(exercises, states, dayIndex);
+  const day = prescribeDay(exercises, states, nextDayIndex(exercises, sessions));
   const last = await lastResultFor(repo, day.prescription.exercise.id);
 
   return { ...day, last, change: describeChange(day.prescription.weightKg, last, equipment.stepKg) };
