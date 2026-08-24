@@ -32,7 +32,7 @@ import type {
   SetLog,
 } from "../engine";
 import { rebuildIfMigrated } from "./replay";
-import type { LoggedSession, Repo, SessionOutcome, SessionQuery } from "./repo";
+import type { LoggedSession, Repo, SessionOutcome, SessionQuery, Snapshot } from "./repo";
 import type { EquipmentRow, SettingsRow } from "./schema";
 import { LiftLogDb, SCHEMA_VERSION, SINGLETON_ID, ensureDefaults } from "./schema";
 import type { Settings } from "./types";
@@ -206,6 +206,44 @@ class DexieRepo implements Repo {
     if (sessions.length === 0) return [];
     const bySession = await this.setsOf(sessions.map((s) => s.id));
     return sessions.map((session) => ({ session, sets: bySession.get(session.id) ?? [] }));
+  }
+
+  /* ---------------------------------------------------------- the backup */
+
+  /**
+   * Everything, tombstones included (C4.1).
+   *
+   * Both tables are read whole rather than through an index. That is the right
+   * shape here for the reason `setsOf` explains at length: the export wants
+   * every row, and a year of them is a few hundred (§7).
+   *
+   * The ordering is not decoration. Two exports of the same database must be
+   * the same bytes, or a diff between yesterday's backup and today's is
+   * unreadable — so sessions come back in log order and each session's sets
+   * follow it, by ordinal. Sets whose session has vanished sort last; nothing
+   * should produce one, and dropping them silently is how a backup loses a fact.
+   */
+  async snapshot(): Promise<Snapshot> {
+    const [exercises, equipment, settings, sessions, sets] = await Promise.all([
+      this.listExercises(),
+      this.getEquipment(),
+      this.getSettings(),
+      this.db.session.toArray(),
+      this.db.setLog.toArray(),
+    ]);
+
+    sessions.sort(chronologically);
+    const position = new Map(sessions.map((session, index) => [session.id, index]));
+    const place = (set: SetLog) => position.get(set.sessionId) ?? sessions.length;
+    sets.sort(
+      (a, b) =>
+        place(a) - place(b) ||
+        a.sessionId.localeCompare(b.sessionId) ||
+        a.ordinal - b.ordinal ||
+        a.id.localeCompare(b.id),
+    );
+
+    return { exercises, equipment, settings, sessions, sets };
   }
 
   /* ----------------------------------------------------------- the cache */

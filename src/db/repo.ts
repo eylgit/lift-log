@@ -15,8 +15,8 @@
  *      `tests/db-boundary.test.ts` fails the build if that ever slips.
  *   2. Every read filters out tombstones (INV-3, C2.4). A soft-deleted session
  *      is gone as far as this interface is concerned; it survives only in the
- *      export, which C4 will add as its own method precisely because it is the
- *      one caller that wants the deleted rows back.
+ *      export, which is `snapshot()` below and its own method precisely because
+ *      it is the one caller that wants the deleted rows back (C4.1).
  *
  * On "append-only" (INV-2). `setLog` rows are never touched after they are
  * written: a correction is a new fact, not an edit. A `session` row is opened
@@ -69,6 +69,35 @@ export type SessionQuery = {
  */
 export type LoggedSession = {
   readonly session: Session;
+  readonly sets: readonly SetLog[];
+};
+
+/**
+ * The whole database, minus the cache — everything an export must carry and an
+ * import must put back (C4).
+ *
+ * It exists because this is the one caller that wants what every other read
+ * here refuses to give it. `listSessions` filters tombstones (INV-3, C2.4);
+ * a backup that did the same would quietly lose the record that a session was
+ * deleted, and restoring it would resurrect the session. `sessions` below is
+ * therefore the only read in this interface that includes them.
+ *
+ * `engineState` is missing, and that is the point. It is derived, and an import
+ * rebuilds it from these rows (C3.1, C4.3), so putting it in the document would
+ * be shipping a second answer next to the log it was computed from — with no
+ * way to tell which one a future reader should believe. The build plan says
+ * "every table"; this is every table that holds a fact.
+ *
+ * `exercises` is in rotation order, because that is where the order is kept
+ * (see `listExercises`).
+ */
+export type Snapshot = {
+  readonly exercises: readonly Exercise[];
+  readonly equipment: Equipment;
+  readonly settings: Settings;
+  /** Every session ever written, tombstones included. */
+  readonly sessions: readonly Session[];
+  /** Every set, including those belonging to a deleted session. */
   readonly sets: readonly SetLog[];
 };
 
@@ -158,6 +187,18 @@ export interface Repo {
 
   /** Sessions with their sets, oldest first. The input to replay (C3.1). */
   readLog(query?: SessionQuery): Promise<readonly LoggedSession[]>;
+
+  /* -------------------------------------------------------- the backup */
+
+  /**
+   * Read everything, tombstones and all, for the export (C4.1).
+   *
+   * Separate from the reads above rather than a flag on them, because the
+   * tombstone rule is not a default to be overridden — it is what those methods
+   * mean. One method that openly returns the deleted rows is easier to audit
+   * than seven that might.
+   */
+  snapshot(): Promise<Snapshot>;
 
   /* --------------------------------------------------------- the cache */
 
