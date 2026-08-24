@@ -589,11 +589,37 @@ everything after is improvement, not enablement.
   tomorrow's card prescribes a weight nothing in the log supports (INV-2).)*
 
 ## E2 — Progress
+*Reached from a new `PROGRESS` row on the Today card, which shows the gain since the start weight
+rather than the word "chart". The geometry is in `src/progress.ts` and the picture is in
+`src/screens/Progress.tsx`, the same split as everywhere else — the arithmetic that decides where
+a line goes is testable without a browser.*
+
 - **E2.1** Per-exercise sawtooth chart of working weight, hand-written SVG. No chart library.
-- **E2.2** The estimated-1RM line beneath it (B6.1), visually distinct.
-- **E2.3** Deload markers on the chart.
-- **E2.4** Stat row: current, best, estimated 1RM, total gain, deload cycles.
-- **E2.5** Exercise switcher.
+  *(Done. Four SVG elements over a 320×150 grid. **The x axis is the session, not the date**: a
+  fortnight off would otherwise be a fortnight of flat line, which is a picture of not training,
+  and nothing in this app counts what was missed (§5, INV-6). The calendar upstairs already shows
+  time honestly. One session sits in the middle rather than against the frame, and a run at one
+  weight gets a kilogram of scale either side, because both otherwise divide by zero.)*
+- **E2.2** The estimated-1RM line beneath it (B6.1), visually distinct. *(Done — dashed, and in
+  the half-tone the calendar uses for a short day. It shares the sawtooth's scale rather than
+  getting its own: Epley multiplies by at least one, so the two lines can never cross, and a
+  second axis would let the reader mistake the gap for a crossing. The gap is the thing worth
+  seeing.)*
+- **E2.3** Deload markers on the chart. *(Done, but not called deloads. The log records that the
+  weight came down, not who brought it down — the engine after three stalls, or the athlete
+  correcting an unloadable number (INV-7). Telling those apart needs K1.1. Until then the marker
+  is a quiet dotted vertical and the stat row says "went down", which is the true statement and
+  the smaller one. Same reasoning as `ChartPoint.weightDropped`, which is where the flag is
+  named.)*
+- **E2.4** Stat row: current, best, estimated 1RM, total gain, deload cycles. *(Done. Gain is
+  measured against the start weight rather than against last session — the change since last time
+  is already on the Today card — and a gain below the start weight is shown as the negative it
+  is. Personal-best markers are one dot, not many: `chartSeries` flags every session that equalled
+  or beat what came before, which on a log that is going up is all of them, so a marker on each is
+  a marker on none. The dot goes on the heaviest, which is what somebody means by "my best".)*
+- **E2.5** Exercise switcher. *(Done, with the same `TapChoice` stepper the Today card switches
+  lifts with — five lifts in a fixed order is a ring you step around, and it is the same question
+  asked on a different screen.)*
 
 ## E3 — Backfill
 - **E3.1** Manual entry for a session done away from the phone: exercise, date, weight, reps per
@@ -601,9 +627,14 @@ everything after is improvement, not enablement.
 - **E3.2** Backfilled sessions go through the same engine path as live ones.
 
 ### Exit criteria — Part E
-- [ ] The chart renders correctly with 1, 2 and 200 sessions, and with a gap in the middle.
-- [ ] Soft-deleting a session removes it from the views and from the chart, and `rebuildState()`
-      still produces the right current weight.
+- [x] The chart renders correctly with 1, 2 and 200 sessions, and with a gap in the middle.
+      *(All four checked in a headless browser against a real build, and the degenerate two are
+      unit-tested: a single session has nowhere to spread across and a flat run has no range to
+      scale against, and both divide by zero if left to the renderer. The gap is invisible by
+      design — the axis is the session, not the date.)*
+- [x] Soft-deleting a session removes it from the views and from the chart, and `rebuildState()`
+      still produces the right current weight. *(E1.3 rebuilds the cache as part of the delete,
+      which is what makes the second half true rather than merely testable.)*
 
 ---
 

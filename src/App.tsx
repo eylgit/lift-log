@@ -11,6 +11,7 @@ import { useRegisterSW } from "virtual:pwa-register/react";
 import { BackupScreen } from "./screens/Backup";
 import { DetailScreen } from "./screens/Detail";
 import { HistoryScreen } from "./screens/History";
+import { ProgressScreen } from "./screens/Progress";
 import { SessionScreen } from "./screens/Session";
 import { SummaryScreen } from "./screens/Summary";
 import { TodayScreen } from "./screens/Today";
@@ -110,6 +111,14 @@ export default function App() {
           detail={screen.detail}
           onDelete={actions.deleteSession}
           onBack={actions.openHistory}
+        />
+      )}
+
+      {screen.name === "progress" && (
+        <ProgressScreen
+          progress={screen.progress}
+          onChoose={actions.openProgress}
+          onBack={actions.dismiss}
         />
       )}
 

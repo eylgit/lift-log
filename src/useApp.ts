@@ -27,6 +27,8 @@ import { exportCsv, exportJson, openRepo, rebuildState } from "./db";
 import type { Exercise, ExerciseId, OutcomeResult, SessionId, Side } from "./engine";
 import type { History, SessionDetail } from "./history";
 import { loadDetail, loadHistory } from "./history";
+import type { Progress } from "./progress";
+import { loadProgress } from "./progress";
 import type { SessionView } from "./session";
 import {
   closeSession,
@@ -78,7 +80,8 @@ export type Screen =
     }
   | { readonly name: "backup"; readonly state: BackupState }
   | { readonly name: "history"; readonly history: History }
-  | { readonly name: "detail"; readonly detail: SessionDetail };
+  | { readonly name: "detail"; readonly detail: SessionDetail }
+  | { readonly name: "progress"; readonly progress: Progress };
 
 /** Today's session as the athlete has adjusted it. */
 export type Plan = {
@@ -126,6 +129,8 @@ export type Actions = {
   readonly openDetail: (id: SessionId) => void;
   /** Tombstone the session on screen and go back to the list (E1.3, INV-3). */
   readonly deleteSession: () => void;
+  /** Open the sawtooth for today's lift, or for one named (E2). */
+  readonly openProgress: (exerciseId?: ExerciseId) => void;
 
   /* ------------------------------------------------------- backup (F1) */
 
@@ -355,6 +360,36 @@ export function useApp(): readonly [Screen, Actions] {
     });
   }, [run]);
 
+  /* ---------------------------------------------------------- progress (E2) */
+
+  /**
+   * Open the chart.
+   *
+   * With no argument it charts the lift on the card, which is what "see the
+   * chart" means when it is tapped from Today. The switcher on the screen
+   * itself passes an id (E2.5), and so does anything else that knows which lift
+   * it means. Called from a screen that names neither, it falls back to the
+   * first of the rotation rather than failing — `loadProgress` does that, and
+   * it is a screen with no wrong answer available.
+   */
+  const openProgress = useCallback(
+    (exerciseId?: ExerciseId) => {
+      void run(async () => {
+        const here = current.current;
+        const chosen =
+          exerciseId ??
+          (here.name === "today"
+            ? here.today.prescription.exercise.id
+            : here.name === "progress"
+              ? here.progress.exercise.id
+              : "");
+        const repo = await openRepo();
+        return { name: "progress", progress: await loadProgress(repo, chosen) };
+      });
+    },
+    [run],
+  );
+
   /* ----------------------------------------------------------- backup (F1) */
 
   const readBackup = useCallback(async (over: Partial<BackupState> = {}): Promise<Screen> => {
@@ -537,6 +572,7 @@ export function useApp(): readonly [Screen, Actions] {
       openHistory,
       openDetail,
       deleteSession,
+      openProgress,
       openBackup,
       download,
     },

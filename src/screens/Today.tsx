@@ -125,6 +125,14 @@ export function TodayScreen({
         </span>
       </div>
       <div className="kv">
+        <span className="k">PROGRESS</span>
+        <span className="v">
+          <button className="tap" onClick={() => actions.openProgress()}>
+            {progressLine(rx.weightKg, rx.exercise.startKg)}
+          </button>
+        </span>
+      </div>
+      <div className="kv">
         <span className="k">LAST BACKUP</span>
         <span className="v">
           <button className="tap" onClick={actions.openBackup}>
@@ -157,6 +165,25 @@ export function TodayScreen({
 export function historyLine(sessions: number): string {
   if (sessions === 0) return "nothing yet — see the calendar";
   return `${sessions} ${sessions === 1 ? "session" : "sessions"}`;
+}
+
+/**
+ * The door to the chart (E2).
+ *
+ * The gain rather than the word "chart", for the reason the history row shows a
+ * count: the number is the interesting part, and it is the number the screen
+ * behind it is about. It is measured against the start weight rather than
+ * against last session, because that is the figure that only exists on the
+ * chart — the change since last time is already printed above, in `changeLine`.
+ *
+ * A weight at or below where it started is not called a loss. It is either a
+ * lift that has not been trained yet or one in the middle of climbing back, and
+ * naming it either would be guessing at which (§5, and `drops` in
+ * `src/progress.ts`).
+ */
+export function progressLine(weightKg: number, startKg: number): string {
+  const gain = Math.round((weightKg - startKg) * 1000) / 1000;
+  return gain > 0 ? `+${gain} kg since the start` : "see the chart";
 }
 
 /**
