@@ -204,6 +204,13 @@ Calendar heat map, one square per day. Chronological list down to every set. Man
 The **per-exercise sawtooth chart** — the most motivating screen in the app. An estimated-1RM
 line under it (Epley: `weight × (1 + reps/30)`). Personal-best markers.
 
+*Corrected in E2.* **Markers**, plural, turned out to be one dot. `chartSeries` flags a session
+as a personal best whenever it equalled or beat everything before it — which, on a log that is
+going up, is every session. A marker on each is a marker on none, so the dot goes on the
+heaviest, which is what somebody means by "my best". The chart also marks where the weight went
+*down*, and deliberately does not call those deloads: the log records the drop, not who caused
+it, and telling the engine's deload from the athlete's correction needs K1.
+
 ### Data
 Export to JSON and CSV. Import to restore. A visible, honest storage-status readout. All of
 §9.
@@ -212,6 +219,13 @@ Export to JSON and CSV. Import to restore. A visible, honest storage-status read
 Streak, sessions this month. **Missing a day creates no debt** — the rotation is a position
 pointer, not a calendar. Skip Tuesday and Wednesday's workout is simply the next lift. There
 is no "you owe 2 sessions" screen, ever. Guilt is friction, and friction is the enemy.
+
+*Corrected in E1.* The two halves of that paragraph disagree, and the second one won. A streak is
+a number that falls when you rest, which is the debt the sentence after it forbids — so nothing
+in the app draws one, and the History screen says so in as many words. What it shows instead is
+days trained and sessions logged: counts that only ever go up. `streak()` and
+`sessionsThisMonth()` were built in B6.3 and are still in `src/engine/stats.ts`, tested and
+unused; they are cheap to keep and there is no screen that should call them today.
 
 ### Explicitly not v1
 Pull-up plan · three-lift days · barbell plans · daily reminder notifications (§10.1) ·
