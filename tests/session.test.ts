@@ -20,6 +20,7 @@ import type { Exercise, Prescription, Session, SetLog } from "../src/engine";
 import { DEFAULT_STEP_KG, SESSION_SCHEME, STALLS_BEFORE_DELOAD } from "../src/engine";
 import {
   buildView,
+  restAt,
   closeSession,
   isFinished,
   loadSession,
@@ -171,6 +172,42 @@ describe("when to rest (D2.4, D3.1)", () => {
 
   it("does not rest after the last set", () => {
     expect(viewWith(6).restStartedAt).toBeNull();
+  });
+});
+
+/* ------------------------------------------------------- the rest clock */
+
+describe("the rest clock reads the wall clock (D3.1)", () => {
+  const started = "2026-08-24T08:10:00.000Z";
+  const after = (seconds: number) => new Date(Date.parse(started) + seconds * 1000);
+
+  it("counts down from the target", () => {
+    expect(restAt(started, 300, after(0))).toMatchObject({ remainingS: 300, over: false });
+    expect(restAt(started, 300, after(60))).toMatchObject({ remainingS: 240, over: false });
+  });
+
+  it("is over on the second the target is reached", () => {
+    expect(restAt(started, 300, after(299)).over).toBe(false);
+    expect(restAt(started, 300, after(300)).over).toBe(true);
+  });
+
+  it("keeps counting up rather than going negative", () => {
+    // Resting long is not a failure state (D3.3). The screen shows the overrun.
+    const rest = restAt(started, 300, after(420));
+
+    expect(rest.remainingS).toBe(0);
+    expect(rest.elapsedS).toBe(420);
+    expect(rest.over).toBe(true);
+  });
+
+  it("is right after the phone has been locked for ten minutes", () => {
+    // The point of the whole design: nothing was counting while the screen was
+    // off, so nothing could be throttled or suspended into the wrong answer.
+    expect(restAt(started, 300, after(600))).toMatchObject({ elapsedS: 600, over: true });
+  });
+
+  it("does not read a backwards clock as a rest that has not started", () => {
+    expect(restAt(started, 300, after(-30))).toMatchObject({ elapsedS: 0, remainingS: 300 });
   });
 });
 

@@ -101,6 +101,17 @@ export type WeightChange =
 export type Today = RotationDay & {
   readonly last: LastResult | null;
   readonly change: WeightChange;
+  /**
+   * How long to rest between sets, in seconds.
+   *
+   * From settings rather than from `prescription.restMinutes`, and the two are
+   * not a contradiction: the engine's `SESSION_SCHEME` is the default that
+   * seeded the settings row (see `DEFAULT_SETTINGS`), and settings is where the
+   * athlete's own answer lives once they change it (G3.1, D5.4). Rest is the
+   * one part of the session shape the engine has no opinion about — it never
+   * reads it — so there is no second answer to disagree with.
+   */
+  readonly restTargetS: number;
 };
 
 /**
@@ -270,10 +281,11 @@ export async function lastResultFor(
  * last time, which is a fact no cache holds.
  */
 export async function loadToday(repo: Repo): Promise<Today> {
-  const [exercises, states, equipment, sessions] = await Promise.all([
+  const [exercises, states, equipment, settings, sessions] = await Promise.all([
     repo.listExercises(),
     repo.listEngineState(),
     repo.getEquipment(),
+    repo.getSettings(),
     // The whole log, for the pointer. A year is a few hundred rows read in one
     // go (§7), and the alternative — asking for the last few and hoping the
     // most recent completed session is among them — is wrong exactly when
@@ -284,5 +296,10 @@ export async function loadToday(repo: Repo): Promise<Today> {
   const day = prescribeDay(exercises, states, nextDayIndex(exercises, sessions));
   const last = await lastResultFor(repo, day.prescription.exercise.id);
 
-  return { ...day, last, change: describeChange(day.prescription.weightKg, last, equipment.stepKg) };
+  return {
+    ...day,
+    last,
+    change: describeChange(day.prescription.weightKg, last, equipment.stepKg),
+    restTargetS: settings.restTargetS,
+  };
 }

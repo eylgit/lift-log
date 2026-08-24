@@ -1,17 +1,28 @@
+/**
+ * The shell (D2).
+ *
+ * Three things live here and nothing else: the update banner, the storage and
+ * connection readout, and which of the three screens is on. Everything the app
+ * actually knows is in `useApp`, and everything it says is in `src/screens/`.
+ */
+
 import { useEffect, useState } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
-import { trainingDay } from "./clock";
-import type { LastResult, Today, WeightChange } from "./today";
-import { useToday } from "./useToday";
+import { SessionScreen } from "./screens/Session";
+import { SummaryScreen } from "./screens/Summary";
+import { TodayScreen } from "./screens/Today";
+import { useApp } from "./useApp";
 
 export default function App() {
-  const view = useToday();
+  const [screen, actions] = useApp();
   const [online, setOnline] = useState(navigator.onLine);
   const [persisted, setPersisted] = useState<boolean | null>(null);
 
   // The one update rule: never swap code out from under a session.
-  // registerType is "prompt", so the new version waits for an explicit tap.
+  // registerType is "prompt", so the new version waits for an explicit tap —
+  // and mid-session it is not even offered, because the tap reloads the page.
   const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW();
+  const inSession = screen.name === "session";
 
   useEffect(() => {
     const on = () => setOnline(true);
@@ -31,7 +42,7 @@ export default function App() {
 
   return (
     <div className="app">
-      {needRefresh && (
+      {needRefresh && !inSession && (
         <div className="banner">
           <span>A new version of Lift Log is ready.</span>
           <span className="spacer" />
@@ -39,28 +50,26 @@ export default function App() {
         </div>
       )}
 
-      {view.status === "loading" && <p className="notice">Reading your log…</p>}
-      {view.status === "failed" && (
+      {screen.name === "loading" && <p className="notice">Reading your log…</p>}
+
+      {screen.name === "failed" && (
         <p className="notice">
-          Lift Log could not open its database, so it does not know what you are lifting today.
-          Nothing has been lost — reload, and if that does not help, check whether this browser is
-          in a private window.
-          <span className="detail">{view.error.message}</span>
+          Lift Log could not reach its database, so it does not know what you are lifting today.
+          Nothing you have already logged has been lost — reload, and if that does not help, check
+          whether this browser is in a private window.
+          <span className="detail">{screen.error.message}</span>
         </p>
       )}
-      {view.status === "ready" && <Card today={view.today} />}
 
-      <div className="grow" />
+      {screen.name === "today" && <TodayScreen today={screen.today} onStart={actions.start} />}
 
-      {/* Disabled until D2 gives it somewhere to go. A button that responds to
-          a tap by doing nothing is worse than one that says it is not ready. */}
-      <button className="start" disabled>
-        <svg width="17" height="17" viewBox="0 0 18 18" fill="currentColor" aria-hidden="true">
-          <polygon points="4,2.5 15,9 4,15.5" />
-        </svg>
-        Start
-      </button>
-      <p className="footnote">The session runner lands in D2.</p>
+      {screen.name === "session" && (
+        <SessionScreen view={screen.view} restTargetS={screen.restTargetS} actions={actions} />
+      )}
+
+      {screen.name === "summary" && (
+        <SummaryScreen view={screen.view} outcome={screen.outcome} onDismiss={actions.dismiss} />
+      )}
 
       <div className="status">
         <span className={online ? "dot" : "dot off"} />
@@ -73,122 +82,4 @@ export default function App() {
       </div>
     </div>
   );
-}
-
-/**
- * The card itself — every number on it derived, none of it hardcoded (D1.2).
- *
- * The wording lives here and nowhere else. `today.ts` hands over shapes and
- * numbers, this turns them into English, and the two can be changed
- * independently: a rewritten sentence breaks no test, and a changed rule breaks
- * no layout.
- */
-function Card({ today }: { today: Today }) {
-  const { prescription: rx, dayIndex, rotationLength, last, change } = today;
-
-  return (
-    <>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span className="eyebrow">Day {dayIndex + 1} of {rotationLength}</span>
-        <span className="rotation">
-          {Array.from({ length: rotationLength }, (_, i) => (
-            <i key={i} className={i === dayIndex ? "on" : undefined} />
-          ))}
-        </span>
-      </div>
-
-      <h1 className="lift">{rx.exercise.name}</h1>
-      <div className="eyebrow" style={{ marginTop: 9 }}>
-        {rx.exercise.pattern} · {rx.weakSide} side first
-      </div>
-
-      <div className="load">
-        <span className="kg">{rx.weightKg}</span>
-        <span className="unit">kg</span>
-      </div>
-      <p className="change">{changeLine(change, last)}</p>
-      <div className="scheme">
-        {rx.repsPerSide} reps per side × {rx.sets} sets
-      </div>
-
-      <div className="rule" />
-
-      <div className="kv">
-        <span className="k">REST</span>
-        <span className="v">{rx.restMinutes} min between sets</span>
-      </div>
-      <div className="kv">
-        <span className="k">LAST TIME</span>
-        <span className="v">{lastLine(last)}</span>
-      </div>
-      <div className="kv">
-        <span className="k">TRAINING DAY</span>
-        <span className="v">{trainingDay()}</span>
-      </div>
-    </>
-  );
-}
-
-/**
- * Why the weight is what it is.
- *
- * The direction comes from the subtraction; the reason comes from what happened
- * last time. Neither restates the progression rule, which is what keeps this
- * from being able to contradict the number above it.
- *
- * A drop is not explained by counting stalls, tempting though it is. The count
- * resets the moment the deload lands, so the card would be asserting a number
- * it cannot read — and by D5 a weight can also come down because the athlete
- * typed it. "Back off and climb again" is true either way.
- */
-function changeLine(change: WeightChange, last: LastResult | null): string {
-  if (change.kind === "first") {
-    return "your start weight — lighter than feels right is the right amount";
-  }
-
-  const direction =
-    change.kind === "same"
-      ? "same again"
-      : change.kind === "down"
-        ? `down from ${change.fromKg} kg`
-        : change.oneStep
-          ? `one step up from ${change.fromKg} kg`
-          : `up ${change.byKg} kg from ${change.fromKg} kg`;
-
-  return `${direction}${because(change, last)}`;
-}
-
-/**
- * The half-sentence after the dash, or nothing at all.
- *
- * A clean session needs no explanation — the weight went up, which is what
- * clean sessions do. The other two do: "same again" with no reason reads like
- * the app forgot to progress, and a drop with no reason reads like a bug.
- *
- * A walked-out session is called out whichever way the weight moved, because it
- * is the one case where today's number has nothing to do with what was on the
- * dumbbell last time. The engine learns nothing from a session nobody finished
- * (B5.7), so the weight is wherever the last *finished* session left it.
- */
-function because(change: WeightChange, last: LastResult | null): string {
-  if (last === null || last.outcome === "clean") return "";
-  if (last.outcome === "walked out") return " — last session was walked out";
-  return change.kind === "down" ? " — back off and climb again" : " — last time was short";
-}
-
-/**
- * Last session's result, as a fact and not a nag.
- *
- * The date is shown and the *gap* is not. "Three days ago" is one short step
- * from "you have missed two sessions", and the rotation is a position pointer
- * rather than a calendar — skipping a week costs nothing and the card must not
- * imply otherwise (INV-6).
- */
-function lastLine(last: LastResult | null): string {
-  if (last === null) return "never trained";
-  const what =
-    last.outcome === "short"
-      ? `${last.repsShort} ${last.repsShort === 1 ? "rep" : "reps"} short`
-      : last.outcome;
-  return `${last.trainingDay} · ${last.weightKg} kg · ${what}`;
 }

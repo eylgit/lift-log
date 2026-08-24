@@ -168,6 +168,45 @@ export function buildView(
   return { session, exercise, sets: ordered, totalSets, step, bars, restStartedAt };
 }
 
+/**
+ * How the rest is going (D3.1).
+ *
+ * Every field is computed from two instants and nothing is counted down. A
+ * `setInterval` that decrements a number is wrong on a phone: iOS suspends
+ * timers in a backgrounded tab and throttles them in a locked one, so a counter
+ * comes back believing less time passed than did. Subtracting from the wall
+ * clock is right by construction — lock the phone for ten minutes and the
+ * answer on the way back is ten minutes later, because it was never being
+ * tracked in the first place.
+ *
+ * The screen still needs a repaint to show a new number, and it uses a timer
+ * for exactly that: to re-render, never to hold the value. A suspended repaint
+ * loses nothing but a frame.
+ *
+ * `remainingS` floors at zero and `over` says so, because a rest that runs long
+ * is not an error. D3.3: "rest longer" is a button, not a failure state.
+ */
+export type Rest = {
+  readonly targetS: number;
+  readonly elapsedS: number;
+  /** Never negative. Use `over` to tell "just finished" from "long overdue". */
+  readonly remainingS: number;
+  readonly over: boolean;
+};
+
+export function restAt(startedAt: Instant, targetS: number, now: Date = new Date()): Rest {
+  const elapsedMs = now.getTime() - new Date(startedAt).getTime();
+  // A clock that went backwards — a timezone change, an NTP correction — must
+  // not read as a rest that has not started.
+  const elapsedS = Math.max(0, Math.floor(elapsedMs / 1000));
+  return {
+    targetS,
+    elapsedS,
+    remainingS: Math.max(0, targetS - elapsedS),
+    over: elapsedS >= targetS,
+  };
+}
+
 /** Every side logged. The screen offers to finish; it does not finish by itself. */
 export function isFinished(view: SessionView): boolean {
   return view.step === null;

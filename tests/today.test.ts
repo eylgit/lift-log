@@ -307,8 +307,11 @@ describe("a fresh install has something to prescribe", () => {
   it("finds the last session of a lift with a long history", async () => {
     // Enough sessions that a "read the last few" shortcut would be tempting,
     // and enough open ones on top of it to make the shortcut wrong.
+    // `write` rather than `log`: this test asks what the log says, not what the
+    // engine made of it, and replaying the whole year forty times over to find
+    // out is the difference between a fast test and a slow one.
     for (let i = 0; i < 40; i += 1) {
-      await log(sessionOf({ id: `h${i}`, trainingDay: dayOfJune(i), actualKg: 20 + i }), CLEAN);
+      await write(sessionOf({ id: `h${i}`, trainingDay: dayOfJune(i), actualKg: 20 + i }), CLEAN);
     }
     for (let i = 0; i < 5; i += 1) {
       await repo.appendSession(
@@ -352,9 +355,14 @@ describe("a fresh install has something to prescribe", () => {
   }
 
   /** Write a finished session and its sets, the way D2 will. */
-  async function log(session: Session, done: readonly number[]) {
+  async function write(session: Session, done: readonly number[]) {
     await repo.appendSession(session);
     if (done.length > 0) await repo.appendSets(setsOf(session.id, done));
+  }
+
+  /** As `write`, and bring the engine cache up to date with it. */
+  async function log(session: Session, done: readonly number[]) {
+    await write(session, done);
     await rebuildState(repo);
   }
 });

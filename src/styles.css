@@ -115,6 +115,96 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .start:active { transform: translateY(1px); }
 .start[disabled] { opacity: 0.55; cursor: default; transform: none; }
 
+/* --------------------------------------------------- the session runner */
+
+.row { display: flex; justify-content: space-between; align-items: center; }
+
+button.quiet {
+  font-family: var(--f-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  padding: 6px 0 6px 12px;
+}
+
+/* Three bars, half-filled after the first side of a set (D2.3). */
+.bars { display: flex; gap: 7px; margin-top: 20px; }
+.bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surf-2);
+  overflow: hidden;
+}
+.bar .fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 180ms ease-out;
+}
+
+/* LEFT / RIGHT, and the rest clock, share the display slot. */
+.side, .clock {
+  font-family: var(--f-display);
+  font-size: 60px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  margin: 12px 0 0;
+}
+.clock { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.clock.over { color: var(--good); }
+
+.prescribed { margin: 14px 0 0; font-size: 20px; color: var(--ink-2); }
+.prescribed .tag {
+  margin-left: 10px;
+  font-family: var(--f-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  background: var(--soft);
+  border-radius: 4px;
+  padding: 3px 7px;
+  vertical-align: 3px;
+}
+
+/* The one button that matters. 88px is the floor, not the target (D2.2). */
+.done {
+  width: 100%;
+  min-height: 96px;
+  border-radius: 14px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.done:active { transform: translateY(1px); }
+
+/* Deliberately smaller and further from the thumb than Done. */
+.missed {
+  width: 100%;
+  margin-top: 12px;
+  padding: 14px;
+  font-family: var(--f-mono);
+  font-size: 13px;
+  color: var(--ink-2);
+  border-radius: 10px;
+  background: var(--surf-2);
+}
+
+.prompt { margin: 0 0 14px; font-size: 19px; color: var(--ink-2); }
+.picker { display: flex; gap: 9px; }
+.pick {
+  flex: 1;
+  min-height: 76px;
+  border-radius: 12px;
+  background: var(--surf);
+  border: 1px solid var(--line);
+  font-family: var(--f-mono);
+  font-size: 24px;
+}
+.pick:active { background: var(--soft); }
+
 /* Loading, and the honest version of a failure (INV-8). */
 .notice {
   margin: 28px 0 0;
