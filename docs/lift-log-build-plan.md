@@ -440,7 +440,11 @@ never really lifted.
 ## C4 — Export and import
 
 - **C4.1** `exportJson()` produces a human-readable, self-describing document: `schemaVersion`, an
-  ISO `exportedAt`, and every table including tombstones.
+  ISO `exportedAt`, and every table including tombstones. *(During C4: every table that holds a
+  fact. `engineState` is left out — it is the cache, C4.3 rebuilds it from the restored log, and
+  carrying it would put a second answer in the file beside the rows it was computed from with no
+  way for a later reader to tell which to believe. The tombstones are the point of the sentence
+  and they do travel: `Repo.snapshot()` is the one read in the app that does not filter them.)*
 - **C4.2** `exportCsv()` produces one row per logged set, for spreadsheets.
 - **C4.3** `importJson(file)` validates `schemaVersion`, **replaces** all local data, then calls
   `rebuildState()`.
@@ -452,7 +456,9 @@ never really lifted.
 
 - [ ] Data survives a reload and an app restart.
 - [x] Dropping `engineState` and calling `rebuildState()` reproduces it exactly — `tests/rebuild.test.ts`, over the simulated year.
-- [ ] The round-trip test runs in CI and passes.
+- [x] The round-trip test runs in CI and passes — `tests/round-trip.test.ts`, over the simulated
+      year. The wipe is a database that never existed rather than one emptied through the code
+      under test, which is both stricter and what a new phone actually looks like.
 - [x] `grep -r dexie src/ --exclude-dir=db` returns nothing — enforced by `tests/db-boundary.test.ts` (C2.3).
 
 ---
