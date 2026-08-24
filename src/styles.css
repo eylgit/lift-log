@@ -68,8 +68,13 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   text-wrap: balance;
 }
 
-.load { display: flex; align-items: baseline; gap: 9px; margin-top: 32px; }
-.load .kg {
+/* The display type sits on the container, so the weight reads the same whether
+   it is plain text (the summary) or a tappable value (Today). */
+.load {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin-top: 32px;
   font-size: clamp(68px, 21vw, 88px);
   font-weight: 800;
   letter-spacing: -0.05em;
@@ -77,7 +82,9 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   color: var(--accent);
   font-variant-numeric: tabular-nums;
 }
+.load button.tap { border-bottom-width: 3px; }
 .load .unit { font-family: var(--f-mono); font-size: 20px; color: var(--accent); }
+.load .kg { font: inherit; }
 
 /* Why the weight is what it is — the slot the plate breakdown was going to
    fill (§6.5 rejected the inventory that would have fed it). */
@@ -114,6 +121,67 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 }
 .start:active { transform: translateY(1px); }
 .start[disabled] { opacity: 0.55; cursor: default; transform: none; }
+
+/* ------------------------------------------------------ tap to edit (D5) */
+
+/* The one affordance in the app: a dotted underline means you can tap it. */
+button.tap {
+  font: inherit;
+  color: inherit;
+  padding: 0;
+  border-bottom: 1.5px dotted var(--line-2);
+  line-height: inherit;
+}
+button.tap:active { border-bottom-color: var(--accent); color: var(--accent); }
+
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  vertical-align: middle;
+  background: var(--surf);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 4px;
+  /* One stepper, one size, wherever it opens — including inside the 88 px
+     weight, which would otherwise hand it its own font size (D5.2). */
+  font-family: var(--f-mono);
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.1;
+  color: var(--ink);
+}
+.stepper-value {
+  min-width: 4.4em;
+  text-align: center;
+  padding: 0 4px;
+}
+/* D5.2 asks for 42 px. The hand pressing these has just finished a set. */
+.step {
+  width: 52px;
+  height: 52px;
+  flex: none;
+  border-radius: 9px;
+  background: var(--surf-2);
+  font-family: var(--f-mono);
+  font-size: 22px;
+  line-height: 1;
+  /* Holding to repeat must not also select text or drag the page. */
+  touch-action: manipulation;
+  user-select: none;
+}
+.step:active { background: var(--soft); color: var(--accent); }
+.step[disabled] { opacity: 0.35; }
+
+/* D5.7 — the known weakness of the pattern, paid for in one line. */
+.hint {
+  margin: 22px 0 0;
+  font-family: var(--f-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
 
 /* --------------------------------------------------- the session runner */
 

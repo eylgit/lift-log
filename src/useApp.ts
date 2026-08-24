@@ -21,12 +21,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { openRepo } from "./db";
-import type { OutcomeResult } from "./engine";
+import type { Exercise, ExerciseId, OutcomeResult, Side } from "./engine";
 import type { SessionView } from "./session";
 import {
   closeSession,
   logSide as logSideOf,
   resumeSession,
+  setReps as setRepsOf,
+  setTotalSets as setTotalSetsOf,
   setWeight as setWeightOf,
   startSession,
 } from "./session";
@@ -36,18 +38,45 @@ import { loadToday } from "./today";
 export type Screen =
   | { readonly name: "loading" }
   | { readonly name: "failed"; readonly error: Error }
-  | { readonly name: "today"; readonly today: Today }
+  | {
+      readonly name: "today";
+      readonly today: Today;
+      /**
+       * What the athlete has tapped their way to, before pressing Start (D5.4).
+       *
+       * Held here and not written anywhere, because until Start there is no
+       * session for it to be a fact about. It becomes one the moment the session
+       * opens: the weight as `actualKg` beside the engine's `prescribedKg`, the
+       * reps as each set's `targetReps`.
+       */
+      readonly plan: Plan;
+    }
   | {
       readonly name: "session";
       readonly view: SessionView;
       /** The athlete's rest, from settings rather than the engine's default. */
       readonly restTargetS: number;
+      /**
+       * The side about to be logged, when the athlete has corrected it (D5.5).
+       *
+       * It survives exactly one write. "I did the right side first this time" is
+       * a statement about one row, not about the session, so it is cleared as
+       * soon as that row exists.
+       */
+      readonly sideOverride: Side | null;
     }
   | {
       readonly name: "summary";
       readonly view: SessionView;
       readonly outcome: OutcomeResult;
     };
+
+/** Today's session as the athlete has adjusted it. */
+export type Plan = {
+  readonly weightKg: number;
+  readonly repsPerSide: number;
+  readonly totalSets: number;
+};
 
 export type Actions = {
   /** Open a session for today's prescription and go to it. */
@@ -62,7 +91,33 @@ export type Actions = {
   readonly abandon: () => void;
   /** Leave the summary and go back to Today. */
   readonly dismiss: () => void;
+
+  /* -------------------------------------------------- tap to edit (D5) */
+
+  /** Today only: train a different lift from the one the rotation offered. */
+  readonly chooseLift: (exerciseId: ExerciseId) => void;
+  /** Today only: the weight to put on. Becomes `actualKg` at Start. */
+  readonly chooseWeight: (kg: number) => void;
+  /** Reps per side. On Today it plans; mid-session it changes what is left. */
+  readonly chooseReps: (reps: number) => void;
+  /** How many sets. On Today it plans; mid-session it adds or drops one. */
+  readonly chooseSets: (sets: number) => void;
+  /** Which side is the weak one. A fact about the athlete, so it is stored. */
+  readonly flipWeakSide: () => void;
+  /** How long to rest between sets, in seconds. Stored in settings. */
+  readonly chooseRest: (seconds: number) => void;
+  /** Mid-session: log the side you actually did, if it was not the one offered. */
+  readonly flipSide: () => void;
 };
+
+/** The plan a freshly loaded card starts from: exactly what was prescribed. */
+function planFrom(today: Today): Plan {
+  return {
+    weightKg: today.prescription.weightKg,
+    repsPerSide: today.prescription.repsPerSide,
+    totalSets: today.prescription.sets,
+  };
+}
 
 export function useApp(): readonly [Screen, Actions] {
   const [screen, setScreen] = useState<Screen>({ name: "loading" });
@@ -78,6 +133,7 @@ export function useApp(): readonly [Screen, Actions] {
   // development, and an in-flight database read must not resolve into a
   // component that is no longer there.
   const live = useRef(true);
+
 
   const run = useCallback(async (work: () => Promise<Screen>) => {
     try {
@@ -99,9 +155,17 @@ export function useApp(): readonly [Screen, Actions] {
       const repo = await openRepo();
       // An open session beats the rotation. See the header.
       const resumed = await resumeSession(repo);
-      if (resumed === null) return { name: "today", today: await loadToday(repo) };
+      if (resumed === null) {
+        const today = await loadToday(repo);
+        return { name: "today", today, plan: planFrom(today) };
+      }
       const settings = await repo.getSettings();
-      return { name: "session", view: resumed, restTargetS: settings.restTargetS };
+      return {
+        name: "session",
+        view: resumed,
+        restTargetS: settings.restTargetS,
+        sideOverride: null,
+      };
     });
 
     return () => {
@@ -109,18 +173,41 @@ export function useApp(): readonly [Screen, Actions] {
     };
   }, [run]);
 
-  const toToday = useCallback(async (): Promise<Screen> => {
-    const repo = await openRepo();
-    return { name: "today", today: await loadToday(repo) };
-  }, []);
+  /**
+   * Re-read the card.
+   *
+   * `keep` is for the edits that change the card without changing what the
+   * athlete has already decided about it: flipping the weak side and changing
+   * the rest both write to storage and both have to reload, and neither is a
+   * reason to throw away a weight they had just dialled in. Choosing a different
+   * lift is — a different lift has a different weight, and keeping the old one
+   * would silently prescribe the press's weight for the deadlift.
+   */
+  const toToday = useCallback(
+    async (exerciseId?: ExerciseId, keep?: Plan): Promise<Screen> => {
+      const repo = await openRepo();
+      const today = await loadToday(repo, exerciseId);
+      return { name: "today", today, plan: keep ?? planFrom(today) };
+    },
+    [],
+  );
 
   const start = useCallback(() => {
     void run(async () => {
       const here = current.current;
       if (here.name !== "today") return here;
       const repo = await openRepo();
-      const view = await startSession(repo, here.today.prescription);
-      return { name: "session", view, restTargetS: here.today.restTargetS };
+      const view = await startSession(repo, here.today.prescription, {
+        actualKg: here.plan.weightKg,
+        repsPerSide: here.plan.repsPerSide,
+        totalSets: here.plan.totalSets,
+      });
+      return {
+        name: "session",
+        view,
+        restTargetS: here.today.restTargetS,
+        sideOverride: null,
+      };
     });
   }, [run]);
 
@@ -130,8 +217,14 @@ export function useApp(): readonly [Screen, Actions] {
         const here = current.current;
         if (here.name !== "session") return here;
         const repo = await openRepo();
-        const view = await logSideOf(repo, here.view, doneReps);
-        return { name: "session", view, restTargetS: here.restTargetS };
+        const view = await logSideOf(
+          repo,
+          here.view,
+          doneReps,
+          new Date(),
+          here.sideOverride ?? undefined,
+        );
+        return { name: "session", view, restTargetS: here.restTargetS, sideOverride: null };
       });
     },
     [run],
@@ -144,7 +237,7 @@ export function useApp(): readonly [Screen, Actions] {
         if (here.name !== "session") return here;
         const repo = await openRepo();
         const view = await setWeightOf(repo, here.view, kg);
-        return { name: "session", view, restTargetS: here.restTargetS };
+        return { name: "session", view, restTargetS: here.restTargetS, sideOverride: null };
       });
     },
     [run],
@@ -172,7 +265,122 @@ export function useApp(): readonly [Screen, Actions] {
 
   const finish = useCallback(() => close("complete"), [close]);
   const abandon = useCallback(() => close("abandoned"), [close]);
-  const dismiss = useCallback(() => void run(toToday), [run, toToday]);
+  const dismiss = useCallback(() => void run(() => toToday()), [run, toToday]);
 
-  return [screen, { start, logSide, setWeight, finish, abandon, dismiss }] as const;
+  /* ------------------------------------------------------ tap to edit (D5) */
+
+  const chooseLift = useCallback(
+    (exerciseId: ExerciseId) => void run(() => toToday(exerciseId)),
+    [run, toToday],
+  );
+
+  /** Change part of today's plan without touching the card underneath it. */
+  const replan = useCallback((change: (plan: Plan) => Plan) => {
+    const here = current.current;
+    if (here.name !== "today") return;
+    setScreen({ ...here, plan: change(here.plan) });
+  }, []);
+
+  const chooseWeight = useCallback(
+    (weightKg: number) => {
+      const here = current.current;
+      if (here.name === "today") return replan((plan) => ({ ...plan, weightKg }));
+      void run(async () => {
+        if (here.name !== "session") return here;
+        const repo = await openRepo();
+        const view = await setWeightOf(repo, here.view, weightKg);
+        return {
+          name: "session",
+          view,
+          restTargetS: here.restTargetS,
+          sideOverride: here.sideOverride,
+        };
+      });
+    },
+    [replan, run],
+  );
+
+  const chooseReps = useCallback(
+    (repsPerSide: number) => {
+      const here = current.current;
+      if (here.name === "today") return replan((plan) => ({ ...plan, repsPerSide }));
+      // Mid-session this touches no row: it changes the target of the sides
+      // still to come, and each of those records its own target when logged.
+      if (here.name === "session") {
+        setScreen({ ...here, view: setRepsOf(here.view, repsPerSide) });
+      }
+    },
+    [replan],
+  );
+
+  const chooseSets = useCallback(
+    (totalSets: number) => {
+      const here = current.current;
+      if (here.name === "today") return replan((plan) => ({ ...plan, totalSets }));
+      if (here.name === "session") {
+        setScreen({ ...here, view: setTotalSetsOf(here.view, totalSets) });
+      }
+    },
+    [replan],
+  );
+
+  const flipWeakSide = useCallback(() => {
+    void run(async () => {
+      const here = current.current;
+      if (here.name !== "today") return here;
+      const repo = await openRepo();
+      const rotation = await repo.listExercises();
+      const id = here.today.prescription.exercise.id;
+      // Which side is weaker is a fact about the athlete, not about a session,
+      // so it goes on the exercise and outlives every session (see `Exercise`).
+      const flipped: Exercise[] = rotation.map((exercise) =>
+        exercise.id === id
+          ? { ...exercise, weakSide: (exercise.weakSide === "left" ? "right" : "left") as Side }
+          : exercise,
+      );
+      await repo.saveRotation(flipped);
+      return toToday(id, here.plan);
+    });
+  }, [run, toToday]);
+
+  const chooseRest = useCallback(
+    (seconds: number) => {
+      void run(async () => {
+        const here = current.current;
+        if (here.name !== "today") return here;
+        const repo = await openRepo();
+        await repo.saveSettings({ restTargetS: seconds });
+        return toToday(here.today.prescription.exercise.id, here.plan);
+      });
+    },
+    [run, toToday],
+  );
+
+  const flipSide = useCallback(() => {
+    const here = current.current;
+    if (here.name !== "session" || here.view.step === null) return;
+    // Nothing is written until Done. This only changes which side the next row
+    // will say it was.
+    const showing = here.sideOverride ?? here.view.step.side;
+    setScreen({ ...here, sideOverride: showing === "left" ? "right" : "left" });
+  }, []);
+
+  return [
+    screen,
+    {
+      start,
+      logSide,
+      setWeight,
+      finish,
+      abandon,
+      dismiss,
+      chooseLift,
+      chooseWeight,
+      chooseReps,
+      chooseSets,
+      flipWeakSide,
+      chooseRest,
+      flipSide,
+    },
+  ] as const;
 }

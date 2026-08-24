@@ -18,6 +18,8 @@
 
 import { useState } from "react";
 
+import { TapNumber, TapToggle } from "../components/TapValue";
+import type { Side } from "../engine";
 import type { Actions } from "../useApp";
 import { asClock, useRest } from "../useRest";
 import { useWakeLock } from "../useWakeLock";
@@ -26,10 +28,12 @@ import type { SessionView } from "../session";
 export function SessionScreen({
   view,
   restTargetS,
+  sideOverride,
   actions,
 }: {
   view: SessionView;
   restTargetS: number;
+  sideOverride: Side | null;
   actions: Actions;
 }) {
   const [missAt, setMissAt] = useState<number | null>(null);
@@ -40,6 +44,9 @@ export function SessionScreen({
   useWakeLock(true);
 
   const { step, bars, restStartedAt, exercise } = view;
+  // The side about to be logged: what the rotation says, unless the athlete has
+  // said otherwise for this one row (D5.5).
+  const side = sideOverride ?? step?.side ?? exercise.weakSide;
   const extraS = extra !== null && extra.at === restStartedAt ? extra.seconds : 0;
   const rest = useRest(restStartedAt, restTargetS + extraS);
   const resting = restStartedAt !== null && dismissedRest !== restStartedAt;
@@ -63,7 +70,10 @@ export function SessionScreen({
       </div>
 
       {step === null ? (
-        <Finished onFinish={actions.finish} />
+        <Finished
+          onFinish={actions.finish}
+          onAnotherSet={() => actions.chooseSets(view.totalSets + 1)}
+        />
       ) : resting && rest !== null ? (
         <Resting
           rest={rest}
@@ -78,10 +88,36 @@ export function SessionScreen({
           <p className="eyebrow" style={{ marginTop: 30 }}>
             Set {step.setNumber} of {view.totalSets}
           </p>
-          <h1 className="side">{step.side.toUpperCase()}</h1>
+          <h1 className="side">
+            <TapToggle
+              value={side}
+              other={side === "left" ? "right" : "left"}
+              onChange={actions.flipSide}
+              label="which side you are on"
+              format={(s: Side) => s.toUpperCase()}
+            />
+          </h1>
           <p className="prescribed">
-            {step.targetReps} reps @ {step.weightKg} kg
-            {step.isWeakSide && <span className="tag">weak side</span>}
+            <TapNumber
+              value={step.targetReps}
+              onChange={actions.chooseReps}
+              step={1}
+              min={1}
+              label="reps this side"
+              format={(reps) => `${reps} reps`}
+            />
+            {" @ "}
+            <TapNumber
+              value={step.weightKg}
+              onChange={actions.chooseWeight}
+              step={WEIGHT_NUDGE_KG}
+              min={WEIGHT_NUDGE_KG}
+              label="the weight on the dumbbell"
+              format={(kg) => `${kg} kg`}
+            />
+            {step.isWeakSide && side === view.exercise.weakSide && (
+              <span className="tag">weak side</span>
+            )}
           </p>
 
           <div className="grow" />
@@ -113,6 +149,15 @@ export function SessionScreen({
 
 /** One tap of "rest longer" (D3.3). A minute is the smallest useful amount. */
 const REST_LONGER_S = 60;
+
+/**
+ * What the mid-session weight stepper moves by.
+ *
+ * Half a kilo rather than the athlete's step. Mid-set is not a planning moment
+ * (D5.5) — the reason to touch the weight here is that the number on the screen
+ * does not match the number on the dumbbell, and that gap is usually small.
+ */
+const WEIGHT_NUDGE_KG = 0.5;
 
 /**
  * The rest between sets (D3).
@@ -196,8 +241,18 @@ function MissPicker({
   );
 }
 
-/** Every side logged. The app never closes a session by itself. */
-function Finished({ onFinish }: { onFinish: () => void }) {
+/**
+ * Every side logged. The app never closes a session by itself.
+ *
+ * "One more set" is where the number of sets is editable, and it is here rather
+ * than on Today on purpose. A planned set count would have to be stored on the
+ * session to survive a force-quit, and it would then be a second answer sitting
+ * beside the sets themselves — free to disagree with them (INV-2). A set you
+ * actually did is a fact; a set you meant to do is not, and this app stores
+ * facts. Fewer sets than planned needs no button either: finishing early is
+ * finishing.
+ */
+function Finished({ onFinish, onAnotherSet }: { onFinish: () => void; onAnotherSet: () => void }) {
   return (
     <>
       <p className="eyebrow" style={{ marginTop: 30 }}>
@@ -207,6 +262,9 @@ function Finished({ onFinish }: { onFinish: () => void }) {
       <div className="grow" />
       <button className="done" onClick={onFinish}>
         Finish session
+      </button>
+      <button className="missed" onClick={onAnotherSet}>
+        One more set
       </button>
     </>
   );

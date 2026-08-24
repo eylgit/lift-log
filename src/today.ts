@@ -102,6 +102,14 @@ export type Today = RotationDay & {
   readonly last: LastResult | null;
   readonly change: WeightChange;
   /**
+   * The rotation, in order, so the card can offer the other four lifts (D5.4).
+   * It is already read to answer the question above; handing it on costs
+   * nothing and saves the screen a second trip to storage.
+   */
+  readonly rotation: readonly Exercise[];
+  /** The athlete's step, which is what the weight stepper moves by (D5.4). */
+  readonly stepKg: number;
+  /**
    * How long to rest between sets, in seconds.
    *
    * From settings rather than from `prescription.restMinutes`, and the two are
@@ -280,7 +288,7 @@ export async function lastResultFor(
  * log if the two could have drifted (C3.2). It is consulted for what happened
  * last time, which is a fact no cache holds.
  */
-export async function loadToday(repo: Repo): Promise<Today> {
+export async function loadToday(repo: Repo, chosenLift?: ExerciseId): Promise<Today> {
   const [exercises, states, equipment, settings, sessions] = await Promise.all([
     repo.listExercises(),
     repo.listEngineState(),
@@ -293,13 +301,22 @@ export async function loadToday(repo: Repo): Promise<Today> {
     repo.listSessions(),
   ]);
 
-  const day = prescribeDay(exercises, states, nextDayIndex(exercises, sessions));
+  // A lift chosen by hand replaces the pointer's answer for this card only
+  // (D5.4). It is not written down: the rotation has not moved, and it will not
+  // until a session is finished. Choosing a lift that is not in the rotation —
+  // it was dropped between the tap and the read — falls back to the pointer
+  // rather than failing.
+  const chosen = chosenLift === undefined ? -1 : exercises.findIndex((e) => e.id === chosenLift);
+  const dayIndex = chosen === -1 ? nextDayIndex(exercises, sessions) : chosen;
+  const day = prescribeDay(exercises, states, dayIndex);
   const last = await lastResultFor(repo, day.prescription.exercise.id);
 
   return {
     ...day,
     last,
     change: describeChange(day.prescription.weightKg, last, equipment.stepKg),
+    rotation: exercises,
+    stepKg: equipment.stepKg,
     restTargetS: settings.restTargetS,
   };
 }

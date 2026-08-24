@@ -61,10 +61,17 @@ export default function App() {
         </p>
       )}
 
-      {screen.name === "today" && <TodayScreen today={screen.today} onStart={actions.start} />}
+      {screen.name === "today" && (
+        <TodayScreen today={screen.today} plan={screen.plan} actions={actions} />
+      )}
 
       {screen.name === "session" && (
-        <SessionScreen view={screen.view} restTargetS={screen.restTargetS} actions={actions} />
+        <SessionScreen
+          view={screen.view}
+          restTargetS={screen.restTargetS}
+          sideOverride={screen.sideOverride}
+          actions={actions}
+        />
       )}
 
       {screen.name === "summary" && (

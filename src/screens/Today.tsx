@@ -7,11 +7,25 @@
  * rule can change without touching a sentence.
  */
 
+import { TapChoice, TapNumber, TapToggle } from "../components/TapValue";
 import { trainingDay } from "../clock";
+import type { ExerciseId, Side } from "../engine";
+import type { Actions, Plan } from "../useApp";
 import type { LastResult, Today, WeightChange } from "../today";
 
-export function TodayScreen({ today, onStart }: { today: Today; onStart: () => void }) {
-  const { prescription: rx, dayIndex, rotationLength, last, change, restTargetS } = today;
+export function TodayScreen({
+  today,
+  plan,
+  actions,
+}: {
+  today: Today;
+  plan: Plan;
+  actions: Actions;
+}) {
+  const { prescription: rx, dayIndex, rotationLength, last, change } = today;
+  const { rotation, stepKg, restTargetS } = today;
+  const chosenWeight = plan.weightKg !== rx.weightKg;
+  const names = new Map(rotation.map((e) => [e.id, e.name] as const));
 
   return (
     <>
@@ -24,25 +38,75 @@ export function TodayScreen({ today, onStart }: { today: Today; onStart: () => v
         </span>
       </div>
 
-      <h1 className="lift">{rx.exercise.name}</h1>
+      <h1 className="lift">
+        <TapChoice
+          value={rx.exercise.id}
+          options={rotation.map((e) => e.id)}
+          onChange={actions.chooseLift}
+          label="today's lift"
+          format={(id: ExerciseId) => names.get(id) ?? id}
+        />
+      </h1>
       <div className="eyebrow" style={{ marginTop: 9 }}>
-        {rx.exercise.pattern} · {rx.weakSide} side first
+        {rx.exercise.pattern} ·{" "}
+        <TapToggle
+          value={rx.weakSide}
+          other={rx.weakSide === "left" ? "right" : "left"}
+          onChange={actions.flipWeakSide}
+          label="the weak side"
+          format={(side: Side) => `${side} side first`}
+        />
       </div>
 
       <div className="load">
-        <span className="kg">{rx.weightKg}</span>
-        <span className="unit">kg</span>
+        <TapNumber
+          value={plan.weightKg}
+          onChange={actions.chooseWeight}
+          step={stepKg}
+          min={stepKg}
+          label="today's weight"
+          format={(kg) => `${kg} kg`}
+        />
       </div>
-      <p className="change">{changeLine(change, last)}</p>
+      <p className="change">
+        {chosenWeight
+          ? `you chose this — the engine asked for ${rx.weightKg} kg`
+          : changeLine(change, last)}
+      </p>
       <div className="scheme">
-        {rx.repsPerSide} reps per side × {rx.sets} sets
+        <TapNumber
+          value={plan.repsPerSide}
+          onChange={actions.chooseReps}
+          step={1}
+          min={1}
+          label="reps per side"
+          format={(reps) => `${reps} reps per side`}
+        />{" "}
+        ×{" "}
+        <TapNumber
+          value={plan.totalSets}
+          onChange={actions.chooseSets}
+          step={1}
+          min={1}
+          label="sets"
+          format={(sets) => `${sets} sets`}
+        />
       </div>
 
       <div className="rule" />
 
       <div className="kv">
         <span className="k">REST</span>
-        <span className="v">{Math.round(restTargetS / 60)} min between sets</span>
+        <span className="v">
+          <TapNumber
+            value={Math.round(restTargetS / 60)}
+            onChange={(minutes) => actions.chooseRest(minutes * 60)}
+            step={1}
+            min={1}
+            label="rest between sets"
+            format={(minutes) => `${minutes} min between sets`}
+          />
+        </span>
       </div>
       <div className="kv">
         <span className="k">LAST TIME</span>
@@ -53,9 +117,11 @@ export function TodayScreen({ today, onStart }: { today: Today; onStart: () => v
         <span className="v">{trainingDay()}</span>
       </div>
 
+      <p className="hint">A dotted underline means you can tap it.</p>
+
       <div className="grow" />
 
-      <button className="start" onClick={onStart}>
+      <button className="start" onClick={actions.start}>
         <svg width="17" height="17" viewBox="0 0 18 18" fill="currentColor" aria-hidden="true">
           <polygon points="4,2.5 15,9 4,15.5" />
         </svg>

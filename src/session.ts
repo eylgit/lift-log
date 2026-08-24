@@ -121,6 +121,29 @@ export function sideAt(ordinal: number, weakSide: Side): Side {
 }
 
 /**
+ * How this session is shaped, where it differs from the default (D5.4, D5.5).
+ *
+ * Both fields are optional and both have an answer read off the log when they
+ * are absent, which is what lets a force-quit lose nothing:
+ *
+ *   `repsPerSide`  the target on the last side logged. The athlete changed it
+ *                  once and every set since has recorded the new number, so the
+ *                  log already knows.
+ *   `totalSets`    at least the default, and at least what has been logged. An
+ *                  athlete who added a fourth set and then dropped their phone
+ *                  comes back to a session with four sets in it, because seven
+ *                  logged sides cannot mean three.
+ *
+ * There is deliberately no *stored plan* for either. A planned-sets field on the
+ * session row would be a second answer beside the sets themselves, and the first
+ * thing it could do is disagree with them (INV-2).
+ */
+export type Shape = {
+  readonly repsPerSide?: number;
+  readonly totalSets?: number;
+};
+
+/**
  * Assemble the view from a session, its lift and the sets logged so far.
  *
  * The cursor is the last logged ordinal plus one, rather than the number of
@@ -133,11 +156,17 @@ export function buildView(
   session: Session,
   exercise: Exercise,
   sets: readonly SetLog[],
-  totalSets: number = SESSION_SCHEME.sets,
+  shape: Shape = {},
 ): SessionView {
   const ordered = [...sets].sort((a, b) => a.ordinal - b.ordinal);
   const last = ordered[ordered.length - 1];
   const cursor = last === undefined ? 0 : last.ordinal + 1;
+
+  const targetReps = shape.repsPerSide ?? last?.targetReps ?? SESSION_SCHEME.repsPerSide;
+  const totalSets = Math.max(
+    shape.totalSets ?? SESSION_SCHEME.sets,
+    Math.ceil(cursor / 2),
+  );
   const totalSides = totalSets * 2;
 
   const step: Step | null =
@@ -149,7 +178,7 @@ export function buildView(
           sideIndex: cursor % 2 === 0 ? 0 : 1,
           side: sideAt(cursor, exercise.weakSide),
           isWeakSide: cursor % 2 === 0,
-          targetReps: SESSION_SCHEME.repsPerSide,
+          targetReps,
           weightKg: session.actualKg,
           isLastSide: cursor === totalSides - 1,
         };
@@ -212,6 +241,55 @@ export function isFinished(view: SessionView): boolean {
   return view.step === null;
 }
 
+/** The shape a view is already running at, to carry across a rebuild. */
+function shapeOf(view: SessionView): Shape {
+  return {
+    repsPerSide: view.step?.targetReps,
+    totalSets: view.totalSets,
+  };
+}
+
+/**
+ * Change the target reps from here on (D5.5).
+ *
+ * Only the sides still to come. The ones already logged recorded the target
+ * they were actually attempted against, and rewriting them would be editing a
+ * fact to make an outcome look different (INV-2) — a set done at 5 that got 4
+ * does not become clean because the target later moved to 4.
+ */
+export function setReps(view: SessionView, repsPerSide: number): SessionView {
+  if (!Number.isInteger(repsPerSide) || repsPerSide < 1) {
+    throw new RangeError(`reps must be a whole number of at least one, got ${repsPerSide}`);
+  }
+  return buildView(view.session, view.exercise, view.sets, {
+    repsPerSide,
+    totalSets: view.totalSets,
+  });
+}
+
+/**
+ * Add a set to the session, or take the last empty one away (D5.4).
+ *
+ * This is where "sets" is editable, and it is deliberately *here* rather than on
+ * Today. A planned number of sets would have to be stored on the session row to
+ * survive a force-quit, and it would then be a second answer sitting beside the
+ * sets themselves with the power to disagree with them. What you did is a fact;
+ * what you meant to do is not one, and this app stores facts.
+ *
+ * Sets that have anything logged in them cannot be removed — that would be
+ * deleting a fact rather than changing a plan.
+ */
+export function setTotalSets(view: SessionView, totalSets: number): SessionView {
+  const logged = Math.ceil(view.sets.length === 0 ? 0 : (view.sets[view.sets.length - 1]!.ordinal + 1) / 2);
+  if (!Number.isInteger(totalSets) || totalSets < 1) {
+    throw new RangeError(`a session needs at least one set, got ${totalSets}`);
+  }
+  return buildView(view.session, view.exercise, view.sets, {
+    repsPerSide: view.step?.targetReps,
+    totalSets: Math.max(totalSets, logged),
+  });
+}
+
 /* ------------------------------------------------------------ the writes */
 
 /**
@@ -225,6 +303,7 @@ export function isFinished(view: SessionView): boolean {
 export async function startSession(
   repo: Repo,
   prescription: Prescription,
+  chosen: { readonly actualKg?: number } & Shape = {},
   now: Date = new Date(),
 ): Promise<SessionView> {
   const session: Session = {
@@ -234,13 +313,13 @@ export async function startSession(
     finishedAt: null,
     trainingDay: trainingDay(now),
     prescribedKg: prescription.weightKg,
-    actualKg: prescription.weightKg,
+    actualKg: chosen.actualKg ?? prescription.weightKg,
     status: "planned",
     note: null,
     deletedAt: null,
   };
   await repo.appendSession(session);
-  return buildView(session, prescription.exercise, []);
+  return buildView(session, prescription.exercise, [], chosen);
 }
 
 /**
@@ -257,6 +336,7 @@ export async function logSide(
   view: SessionView,
   doneReps: number,
   now: Date = new Date(),
+  side: Side = view.step?.side ?? "left",
 ): Promise<SessionView> {
   const { step } = view;
   if (step === null) {
@@ -270,13 +350,13 @@ export async function logSide(
     id: newId(),
     sessionId: view.session.id,
     ordinal: step.ordinal,
-    side: step.side,
+    side,
     targetReps: step.targetReps,
     doneReps,
     loggedAt: now.toISOString(),
   };
   await repo.appendSets([set]);
-  return buildView(view.session, view.exercise, [...view.sets, set], view.totalSets);
+  return buildView(view.session, view.exercise, [...view.sets, set], shapeOf(view));
 }
 
 /**
@@ -298,7 +378,7 @@ export async function setWeight(
   }
   await repo.setActualKg(view.session.id, actualKg);
   const session: Session = { ...view.session, actualKg };
-  return buildView(session, view.exercise, view.sets, view.totalSets);
+  return buildView(session, view.exercise, view.sets, shapeOf(view));
 }
 
 /**
@@ -354,6 +434,7 @@ export async function loadSession(repo: Repo, sessionId: string): Promise<Sessio
   // Nothing can prescribe for it, so there is nothing to resume.
   if (exercise === undefined) return null;
 
+  // No shape passed: both halves of it are read back off the sets (see `Shape`).
   return buildView(session, exercise, sets);
 }
 

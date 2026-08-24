@@ -21,6 +21,8 @@ import { DEFAULT_STEP_KG, SESSION_SCHEME, STALLS_BEFORE_DELOAD } from "../src/en
 import {
   buildView,
   restAt,
+  setReps,
+  setTotalSets,
   closeSession,
   isFinished,
   loadSession,
@@ -175,6 +177,67 @@ describe("when to rest (D2.4, D3.1)", () => {
   });
 });
 
+/* ------------------------------------------------------- tap to edit (D5) */
+
+describe("changing the session as it runs", () => {
+  it("changes the target for the sides still to come", () => {
+    const view = setReps(viewWith(2), 3);
+
+    expect(view.step?.targetReps).toBe(3);
+  });
+
+  it("leaves the sides already logged at the target they were attempted against", () => {
+    // A set done at a target of five that got four is short. It does not become
+    // clean because the target moved afterwards (INV-2).
+    const view = setReps(viewWith(2), 3);
+
+    expect(view.sets.map((s) => s.targetReps)).toEqual([5, 5]);
+  });
+
+  it("reads the reps back off the log after a force-quit", () => {
+    // No shape passed, which is what `loadSession` does: the target on the last
+    // side logged is the answer.
+    const sets = [setOf(0, { targetReps: 3 }), setOf(1, { targetReps: 3 })];
+    const view = buildView(sessionOf(), PRESS, sets);
+
+    expect(view.step?.targetReps).toBe(3);
+  });
+
+  it("refuses a rep target that is not a whole number of reps", () => {
+    expect(() => setReps(viewWith(0), 0)).toThrow(RangeError);
+    expect(() => setReps(viewWith(0), 2.5)).toThrow(RangeError);
+  });
+
+  it("adds a set", () => {
+    const view = setTotalSets(viewWith(6), 4);
+
+    expect(view.totalSets).toBe(4);
+    expect(view.step).toMatchObject({ ordinal: 6, setNumber: 4, side: "left" });
+    expect(view.bars).toEqual([1, 1, 1, 0]);
+  });
+
+  it("reads an added set back off the log after a force-quit", () => {
+    // Seven logged sides cannot mean three sets, whatever the default says.
+    const sets = Array.from({ length: 7 }, (_, i) => setOf(i));
+    const view = buildView(sessionOf(), PRESS, sets);
+
+    expect(view.totalSets).toBe(4);
+    expect(view.step?.ordinal).toBe(7);
+  });
+
+  it("will not drop a set that has anything logged in it", () => {
+    const view = setTotalSets(viewWith(5), 1);
+
+    // Two full sets and half of a third are on the record. Removing them would
+    // be deleting facts, not changing a plan.
+    expect(view.totalSets).toBe(3);
+  });
+
+  it("refuses a session of no sets at all", () => {
+    expect(() => setTotalSets(viewWith(0), 0)).toThrow(RangeError);
+  });
+});
+
 /* ------------------------------------------------------- the rest clock */
 
 describe("the rest clock reads the wall clock (D3.1)", () => {
@@ -226,7 +289,7 @@ describe("running a session", () => {
   it("opens a session for today's prescription", async () => {
     const today = await loadToday(repo);
 
-    const view = await startSession(repo, today.prescription, at(0));
+    const view = await startSession(repo, today.prescription, {}, at(0));
 
     expect(view.session).toMatchObject({
       exerciseId: today.prescription.exercise.id,
@@ -239,7 +302,7 @@ describe("running a session", () => {
   });
 
   it("writes one row per side, in order", async () => {
-    let view = await startSession(repo, prescriptionFor(PRESS, 20), at(0));
+    let view = await startSession(repo, prescriptionFor(PRESS, 20), {}, at(0));
     view = await logSide(repo, view, 5, at(1));
     view = await logSide(repo, view, 4, at(2));
 
@@ -251,7 +314,7 @@ describe("running a session", () => {
   });
 
   it("resumes on the exact side after a force-quit (D2.5)", async () => {
-    let view = await startSession(repo, prescriptionFor(PRESS, 20), at(0));
+    let view = await startSession(repo, prescriptionFor(PRESS, 20), {}, at(0));
     view = await logSide(repo, view, 5, at(1));
     view = await logSide(repo, view, 5, at(2));
     view = await logSide(repo, view, 5, at(8));
@@ -282,14 +345,14 @@ describe("running a session", () => {
   });
 
   it("refuses a rep count that is not a whole number of reps", async () => {
-    const view = await startSession(repo, prescriptionFor(PRESS, 20), at(0));
+    const view = await startSession(repo, prescriptionFor(PRESS, 20), {}, at(0));
 
     await expect(logSide(repo, view, 4.5, at(1))).rejects.toThrow(RangeError);
     await expect(logSide(repo, view, -1, at(1))).rejects.toThrow(RangeError);
   });
 
   it("records reps as a number rather than a flag (INV-4)", async () => {
-    let view = await startSession(repo, prescriptionFor(PRESS, 20), at(0));
+    let view = await startSession(repo, prescriptionFor(PRESS, 20), {}, at(0));
     view = await logSide(repo, view, 4, at(1));
     view = await logSide(repo, view, 1, at(2));
 
@@ -330,7 +393,7 @@ describe("running a session", () => {
   });
 
   it("learns nothing from a session that was walked out of (B5.7)", async () => {
-    let view = await startSession(repo, prescriptionFor(PRESS, 20), at(0));
+    let view = await startSession(repo, prescriptionFor(PRESS, 20), {}, at(0));
     view = await logSide(repo, view, 5, at(1));
 
     const outcome = await closeSession(repo, view, "abandoned", at(5));
@@ -366,7 +429,7 @@ describe("running a session", () => {
   /* -------------------------------------------------- correcting the weight */
 
   it("records a weight the athlete chose, and progresses from it (INV-7)", async () => {
-    let view = await startSession(repo, prescriptionFor(PRESS, 20), at(0));
+    let view = await startSession(repo, prescriptionFor(PRESS, 20), {}, at(0));
 
     // The rack does not do 20. It does 22.5.
     view = await setWeight(repo, view, 22.5);
@@ -380,7 +443,7 @@ describe("running a session", () => {
   });
 
   it("shows the corrected weight on the very next side", async () => {
-    let view = await startSession(repo, prescriptionFor(PRESS, 20), at(0));
+    let view = await startSession(repo, prescriptionFor(PRESS, 20), {}, at(0));
     view = await logSide(repo, view, 5, at(1));
 
     view = await setWeight(repo, view, 22.5);
@@ -389,7 +452,7 @@ describe("running a session", () => {
   });
 
   it("survives a force-quit with the corrected weight (INV-7, D2.5)", async () => {
-    let view = await startSession(repo, prescriptionFor(PRESS, 20), at(0));
+    let view = await startSession(repo, prescriptionFor(PRESS, 20), {}, at(0));
     view = await setWeight(repo, view, 22.5);
     view = await logSide(repo, view, 5, at(1));
 
@@ -399,8 +462,45 @@ describe("running a session", () => {
     expect(resumed?.step?.weightKg).toBe(22.5);
   });
 
+  it("logs the side the athlete says they did, not the one offered (D5.5)", async () => {
+    let view = await startSession(repo, prescriptionFor(PRESS, 20), {}, at(0));
+
+    // The weak side is the left and the app offered it; they did the right.
+    view = await logSide(repo, view, 5, at(1), "right");
+
+    const sets = await repo.listSets(view.session.id);
+    expect(sets[0]).toMatchObject({ ordinal: 0, side: "right" });
+    // The next side is still the one the ordinal says, which is now the left.
+    expect(view.step?.side).toBe("right");
+  });
+
+  it("carries a changed rep target into the rows it writes", async () => {
+    let view = await startSession(repo, prescriptionFor(PRESS, 20), { repsPerSide: 3 }, at(0));
+    view = await logSide(repo, view, 3, at(1));
+    view = await logSide(repo, view, 3, at(2));
+
+    const sets = await repo.listSets(view.session.id);
+    expect(sets.map((s) => s.targetReps)).toEqual([3, 3]);
+  });
+
+  it("counts three of three as clean at whatever target was set", async () => {
+    let view = await startSession(repo, prescriptionFor(PRESS, 20), { repsPerSide: 3 }, at(0));
+    for (let i = 0; i < 6; i += 1) view = await logSide(repo, view, 3, at(i + 1));
+
+    const outcome = await closeSession(repo, view, "complete", at(30));
+
+    expect(outcome.state.currentKg).toBe(20 + DEFAULT_STEP_KG);
+  });
+
+  it("starts at the weight the athlete chose on Today (D5.4)", async () => {
+    const view = await startSession(repo, prescriptionFor(PRESS, 20), { actualKg: 25 }, at(0));
+
+    expect(view.session).toMatchObject({ prescribedKg: 20, actualKg: 25 });
+    expect(view.step?.weightKg).toBe(25);
+  });
+
   it("refuses a weight that is not a weight", async () => {
-    const view = await startSession(repo, prescriptionFor(PRESS, 20), at(0));
+    const view = await startSession(repo, prescriptionFor(PRESS, 20), {}, at(0));
 
     await expect(setWeight(repo, view, 0)).rejects.toThrow(RangeError);
     await expect(setWeight(repo, view, Number.NaN)).rejects.toThrow(RangeError);
@@ -413,7 +513,7 @@ describe("running a session", () => {
   });
 
   it("gives back nothing for a session whose lift left the rotation", async () => {
-    const view = await startSession(repo, prescriptionFor(PRESS, 20), at(0));
+    const view = await startSession(repo, prescriptionFor(PRESS, 20), {}, at(0));
     const rotation = await repo.listExercises();
     await repo.saveRotation(rotation.filter((e) => e.id !== "press"));
 
@@ -422,7 +522,7 @@ describe("running a session", () => {
 
   /** Start a session and log every side of it. */
   async function run(prescription: Prescription, reps: readonly number[]): Promise<SessionView> {
-    let view = await startSession(repo, prescription, at(0));
+    let view = await startSession(repo, prescription, {}, at(0));
     for (const [i, done] of reps.entries()) view = await logSide(repo, view, done, at(i + 1));
     return view;
   }
