@@ -27,7 +27,7 @@
  * tested without a browser.
  */
 
-import type { Instant } from "../engine";
+import type { ExerciseId, Instant, SetLog } from "../engine";
 import type { Repo, Snapshot } from "./repo";
 
 /* -------------------------------------------------------------- the file */
@@ -87,4 +87,106 @@ export async function exportJson(
     ...snapshot,
   };
   return `${JSON.stringify(document, null, 2)}\n`;
+}
+
+/* ------------------------------------------------------------------- csv */
+
+/**
+ * The columns, in order (C4.2).
+ *
+ * One row per logged set, denormalised: the session's day, weight and status
+ * repeat on each of its rows, because a spreadsheet cannot join and the whole
+ * point of this file is that it opens in one. Weights are kilograms, as they
+ * are everywhere else (INV-1, §14.4), and the column says so rather than
+ * relying on a setting the file does not carry.
+ */
+const CSV_COLUMNS = [
+  "trainingDay",
+  "exercise",
+  "exerciseId",
+  "side",
+  "set",
+  "targetReps",
+  "doneReps",
+  "weightKg",
+  "prescribedKg",
+  "status",
+  "loggedAt",
+  "sessionId",
+  "setId",
+  "note",
+] as const;
+
+/**
+ * RFC 4180: quote a field that contains a comma, a quote or a newline, and
+ * double any quote inside it. Everything else goes out bare.
+ *
+ * There is a second escaping problem this deliberately does not solve. A note
+ * beginning `=` or `+` is a formula to Excel, and the usual mitigation is to
+ * prefix it with an apostrophe. That trades a threat nobody here faces — this
+ * is one athlete's own log, opened in their own spreadsheet — for corrupting
+ * every note that legitimately starts with a minus sign. The data wins.
+ */
+function csvField(value: string | number | null): string {
+  if (value === null) return "";
+  const text = String(value);
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function csvRow(fields: readonly (string | number | null)[]): string {
+  return `${fields.map(csvField).join(",")}\r\n`;
+}
+
+/**
+ * The log as one row per set, for a spreadsheet (C4.2).
+ *
+ * This is not the backup — `exportJson` is, and this is the file you open to
+ * draw a graph the app does not draw. Two consequences follow from that and
+ * are the only judgement calls here.
+ *
+ * Deleted sessions are left out. The JSON keeps tombstones because a restore
+ * must not resurrect what was deleted; a spreadsheet has nothing to restore,
+ * and INV-3 says a deleted session is not there. So this reads the ordinary
+ * log, filters and all.
+ *
+ * Sessions still open are included, with `status` telling the truth about
+ * them. The sets were lifted; leaving them out would make today's training
+ * vanish from the file until the session was closed.
+ *
+ * `set` is counted per side rather than derived from the ordinal, so it stays
+ * right when a session was abandoned between the two sides of a set — dividing
+ * the ordinal by two assumes a pairing the data does not promise.
+ */
+export async function exportCsv(repo: Repo): Promise<string> {
+  const [exercises, log] = await Promise.all([repo.listExercises(), repo.readLog()]);
+  const nameOf = new Map<ExerciseId, string>(exercises.map((e) => [e.id, e.name]));
+
+  let csv = csvRow(CSV_COLUMNS);
+  for (const { session, sets } of log) {
+    const setNumber = new Map<SetLog["side"], number>();
+    for (const set of sets) {
+      const n = (setNumber.get(set.side) ?? 0) + 1;
+      setNumber.set(set.side, n);
+      csv += csvRow([
+        session.trainingDay,
+        // An exercise dropped from the rotation keeps its sessions (see
+        // `rebuildState`), so its name may be gone. The id is in the row either
+        // way; an empty column is honest, an invented name is not.
+        nameOf.get(session.exerciseId) ?? "",
+        session.exerciseId,
+        set.side,
+        n,
+        set.targetReps,
+        set.doneReps,
+        session.actualKg,
+        session.prescribedKg,
+        session.status,
+        set.loggedAt,
+        session.id,
+        set.id,
+        session.note,
+      ]);
+    }
+  }
+  return csv;
 }
