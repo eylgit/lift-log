@@ -189,8 +189,15 @@ looks, and why it matters less than you'd think.
 
 ### Session summary
 All clean → "Next time: 35 kg", and how that compares to today. Missed something → "Next time:
-32.5 kg again." Third stall → the deload prompt: *"You've been stuck at 32.5 kg for three
-sessions. Drop to 25 kg and climb back — you'll come through this number."*
+32.5 kg again." Third stall → the deload, already applied: *"You've been stuck at 32.5 kg for
+three sessions, so the weight has come down to 25 kg. Climb back up — you'll come through this
+number."*
+
+*Corrected in D4.* This said **the deload prompt**, and the project owner has since decided
+against asking: three stalls is unambiguous enough that being asked is friction rather than
+control, and the weight is tap-editable anyway, so anyone who disagrees taps it back. The engine
+drops it and the screen says so — see `applyOutcome` in `src/engine/progression.ts` and D4.3.
+Saying *why* is not optional, though. A weight that moves down without explanation reads as a bug.
 
 ### History and progress
 Calendar heat map, one square per day. Chronological list down to every set. Manual backfill.

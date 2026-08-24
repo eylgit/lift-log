@@ -157,7 +157,7 @@ export const DELOAD_FALLBACK_FACTOR = 0.85;
  * decided against the prompt: three stalls is unambiguous enough that being
  * asked is friction rather than control, and the weight is editable by hand
  * anyway (INV-7) — so anyone who disagrees with the drop can simply tap it
- * back. Both documents should be corrected to match.
+ * back. Both documents have since been corrected to match (D4).
  */
 export type Deload = {
   readonly exerciseId: ExerciseId;

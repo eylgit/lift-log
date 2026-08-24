@@ -454,7 +454,8 @@ never really lifted.
 
 ### Exit criteria — Part C
 
-- [ ] Data survives a reload and an app restart.
+- [x] Data survives a reload and an app restart — exercised for real from D2 onwards, and
+      `tests/session.test.ts` writes a session, throws the view away and reads it back.
 - [x] Dropping `engineState` and calling `rebuildState()` reproduces it exactly — `tests/rebuild.test.ts`, over the simulated year.
 - [x] The round-trip test runs in CI and passes — `tests/round-trip.test.ts`, over the simulated
       year. The wipe is a database that never existed rather than one emptied through the code
@@ -521,19 +522,34 @@ everything after is improvement, not enablement.
   itself for a stepper in place; tapping elsewhere collapses it.
 - **D5.2** Build one `<Stepper>` component with ≥ 42 px targets, used everywhere.
 - **D5.3** Binary values do not get a stepper — they flip on tap.
-- **D5.4** **On Today**, editable: the lift, the weight, reps × sets, rest, the weak side.
-- **D5.5** **On the session screen**, editable: the weight, the reps, which side you are on. Nothing
-  else — mid-set is not a planning moment.
+- **D5.4** **On Today**, editable: the lift, the weight, reps, rest, the weak side. *(This said
+  "reps × sets". Reps are editable here and survive a force-quit, because the target rides on
+  every `SetLog` row. **Sets moved to the session screen** — "one more set" once the last one is
+  logged, and finishing early is simply finishing. The alternative was a planned-sets field on the
+  session row, which is the only way a *plan* survives a force-quit, and it would have been a
+  second answer sitting beside the sets themselves with the power to disagree with them: seven
+  logged sides cannot mean three sets, but a stored `plannedSets: 3` could say they did. What you
+  did is a fact; what you meant to do is not one, and this app stores facts (INV-2).)*
+- **D5.5** **On the session screen**, editable: the weight, the reps, which side you are on, and
+  whether there is another set. Nothing else — mid-set is not a planning moment.
 - **D5.6** Every edit writes a fact to the log and feeds the engine (B5.6).
 - **D5.7** A one-line hint on Today: "Dotted underline means you can tap it." Discoverability is the
   known weakness of this pattern; pay the one line.
 
 ### Exit criteria — Part D
 
-- [ ] A full session can be completed on a phone, and the weight moves correctly afterwards.
-- [ ] Force-quitting mid-session and reopening resumes on the right side.
-- [ ] The rest timer shows the correct remaining time after the phone has been locked.
-- [ ] Every value listed in D5.4 and D5.5 is editable in one tap.
+- [x] A full session can be completed and the weight moves correctly afterwards —
+      `tests/session.test.ts`, over clean, short, walked-out and third-stall sessions. *On a
+      phone* is the owner's to confirm; nothing here has been run on one.
+- [x] Force-quitting mid-session and reopening resumes on the right side — the same test file
+      does it by discarding the view and rebuilding it from the database, which is what a
+      force-quit is. There is no resume code path to check: how far through a session you are is
+      read off the sets logged (see the header of `src/session.ts`).
+- [x] The rest timer shows the correct remaining time after the phone has been locked — by
+      construction. Nothing counts down; `restAt` subtracts two instants, and the test asserts the
+      answer after a simulated ten-minute lock. A real lock is the owner's to confirm.
+- [x] Every value listed in D5.4 and D5.5 is editable in one tap — with one deviation, recorded
+      at D5.4: the number of sets is editable on the session screen rather than on Today.
 - [ ] **The owner has trained at least one real session on it.**
 
 ---
