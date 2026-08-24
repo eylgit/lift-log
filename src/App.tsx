@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { trainingDay } from "./clock";
-import type { Today } from "./today";
+import type { LastResult, Today, WeightChange } from "./today";
 import { useToday } from "./useToday";
 
 /**
@@ -61,6 +61,8 @@ export default function App() {
 
       <div className="grow" />
 
+      {/* Disabled until D2 gives it somewhere to go. A button that responds to
+          a tap by doing nothing is worse than one that says it is not ready. */}
       <button className="start" disabled>
         <svg width="17" height="17" viewBox="0 0 18 18" fill="currentColor" aria-hidden="true">
           <polygon points="4,2.5 15,9 4,15.5" />
@@ -83,15 +85,15 @@ export default function App() {
 }
 
 /**
- * The card itself — every number on it derived, none of it hardcoded.
+ * The card itself — every number on it derived, none of it hardcoded (D1.2).
  *
- * The weight is the engine's answer for this lift given everything in the log,
- * which on a fresh install is the start weight and nothing else. D1.2 fills the
- * card out; this is the same card as before with the placeholder rotation
- * pulled out from under it.
+ * The wording lives here and nowhere else. `today.ts` hands over shapes and
+ * numbers, this turns them into English, and the two can be changed
+ * independently: a rewritten sentence breaks no test, and a changed rule breaks
+ * no layout.
  */
 function Card({ today }: { today: Today }) {
-  const { prescription: rx, dayIndex, rotationLength } = today;
+  const { prescription: rx, dayIndex, rotationLength, last, change } = today;
 
   return (
     <>
@@ -113,6 +115,7 @@ function Card({ today }: { today: Today }) {
         <span className="kg">{rx.weightKg}</span>
         <span className="unit">kg</span>
       </div>
+      <p className="change">{changeLine(change, last)}</p>
       <div className="scheme">
         {rx.repsPerSide} reps per side × {rx.sets} sets
       </div>
@@ -124,9 +127,77 @@ function Card({ today }: { today: Today }) {
         <span className="v">{rx.restMinutes} min between sets</span>
       </div>
       <div className="kv">
+        <span className="k">LAST TIME</span>
+        <span className="v">{lastLine(last)}</span>
+      </div>
+      <div className="kv">
         <span className="k">TRAINING DAY</span>
         <span className="v">{trainingDay()}</span>
       </div>
     </>
   );
+}
+
+/**
+ * Why the weight is what it is.
+ *
+ * The direction comes from the subtraction; the reason comes from what happened
+ * last time. Neither restates the progression rule, which is what keeps this
+ * from being able to contradict the number above it.
+ *
+ * A drop is not explained by counting stalls, tempting though it is. The count
+ * resets the moment the deload lands, so the card would be asserting a number
+ * it cannot read — and by D5 a weight can also come down because the athlete
+ * typed it. "Back off and climb again" is true either way.
+ */
+function changeLine(change: WeightChange, last: LastResult | null): string {
+  if (change.kind === "first") {
+    return "your start weight — lighter than feels right is the right amount";
+  }
+
+  const direction =
+    change.kind === "same"
+      ? "same again"
+      : change.kind === "down"
+        ? `down from ${change.fromKg} kg`
+        : change.oneStep
+          ? `one step up from ${change.fromKg} kg`
+          : `up ${change.byKg} kg from ${change.fromKg} kg`;
+
+  return `${direction}${because(change, last)}`;
+}
+
+/**
+ * The half-sentence after the dash, or nothing at all.
+ *
+ * A clean session needs no explanation — the weight went up, which is what
+ * clean sessions do. The other two do: "same again" with no reason reads like
+ * the app forgot to progress, and a drop with no reason reads like a bug.
+ *
+ * A walked-out session is called out whichever way the weight moved, because it
+ * is the one case where today's number has nothing to do with what was on the
+ * dumbbell last time. The engine learns nothing from a session nobody finished
+ * (B5.7), so the weight is wherever the last *finished* session left it.
+ */
+function because(change: WeightChange, last: LastResult | null): string {
+  if (last === null || last.outcome === "clean") return "";
+  if (last.outcome === "walked out") return " — last session was walked out";
+  return change.kind === "down" ? " — back off and climb again" : " — last time was short";
+}
+
+/**
+ * Last session's result, as a fact and not a nag.
+ *
+ * The date is shown and the *gap* is not. "Three days ago" is one short step
+ * from "you have missed two sessions", and the rotation is a position pointer
+ * rather than a calendar — skipping a week costs nothing and the card must not
+ * imply otherwise (INV-6).
+ */
+function lastLine(last: LastResult | null): string {
+  if (last === null) return "never trained";
+  const what =
+    last.outcome === "short"
+      ? `${last.repsShort} ${last.repsShort === 1 ? "rep" : "reps"} short`
+      : last.outcome;
+  return `${last.trainingDay} · ${last.weightKg} kg · ${what}`;
 }

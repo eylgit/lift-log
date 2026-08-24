@@ -474,7 +474,13 @@ everything after is improvement, not enablement.
 
 - **D1.1** Replace the hardcoded rotation in `src/App.tsx` with the engine's prescription.
 - **D1.2** Render: day of rotation, exercise name, pattern, weight, `5 reps per side × 3 sets`,
-  load breakdown, last session's result, Start.
+  why the weight is what it is, last session's result, Start. *(This sub-step said "load
+  breakdown", meaning which plates to put on. The app has no plate inventory to draw one from and
+  will not get one — see `lift-log-design.md` §6.5 and §14.6, and the note now added to §5. The
+  slot holds today's weight against the weight actually lifted last time: one step up from 30 kg,
+  same again after a short session, down from 32.5 kg after a deload. The comparison is a
+  subtraction rather than a re-reading of the progression rules, so it cannot drift out of step
+  with the number above it.)*
 - **D1.3** Advance the rotation by **position, not date** (INV-6). No catch-up, no debt, no
   "you missed 2 sessions" UI anywhere.
 
@@ -502,7 +508,8 @@ everything after is improvement, not enablement.
 
 ## D4 — Summary and deload
 
-- **D4.1** Clean → "Next time: 35 kg" with the load breakdown.
+- **D4.1** Clean → "Next time: 35 kg", and how that compares to what was just lifted. *(Was "with
+  the load breakdown" — same correction as D1.2.)*
 - **D4.2** Missed → "Next time: 32.5 kg again."
 - **D4.3** Third stall → "Next time: 30 kg" and say why — stuck for three sessions, and where the
   new number came from (B5.4). A statement, not a prompt: the engine has already dropped it

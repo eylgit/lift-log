@@ -156,8 +156,16 @@ exercise, with a hard push to start light. Weak side per exercise. Then: **insta
 screen**, which is a data-safety step, not a nicety (§9.2).
 
 ### Today — the home screen
-One card: day of rotation, exercise name, weight, `5 reps per side × 3 sets`, the plate breakdown,
-last session's result, a Start button, and which side goes first.
+One card: day of rotation, exercise name, weight, `5 reps per side × 3 sets`, why the weight is
+what it is, last session's result, a Start button, and which side goes first.
+
+*Corrected in D1.2.* Both this line and the session summary below used to say **plate breakdown**,
+which is a leftover from a draft that still asked what kit you own. §6.5 and §14.6 rejected that
+outright — "ask one number: the smallest jump you can make" — so the app cannot draw a breakdown
+and never will in v1. What sits in that slot instead is the question the breakdown was really
+answering: *what do I do differently to the dumbbell than last time?* One step up from 30 kg. Same
+again, last time was short. Down from 32.5 kg, back off and climb again. It is two numbers already
+in the log subtracted from one another, and it costs no setting.
 
 ### How anything gets changed
 
@@ -180,7 +188,7 @@ never a running interval** — see §10.2 for why this is more constrained on th
 looks, and why it matters less than you'd think.
 
 ### Session summary
-All clean → "Next time: 35 kg" with the plate breakdown. Missed something → "Next time:
+All clean → "Next time: 35 kg", and how that compares to today. Missed something → "Next time:
 32.5 kg again." Third stall → the deload prompt: *"You've been stuck at 32.5 kg for three
 sessions. Drop to 25 kg and climb back — you'll come through this number."*
 

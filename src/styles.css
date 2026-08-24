@@ -79,6 +79,15 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 }
 .load .unit { font-family: var(--f-mono); font-size: 20px; color: var(--accent); }
 
+/* Why the weight is what it is — the slot the plate breakdown was going to
+   fill (§6.5 rejected the inventory that would have fed it). */
+.change {
+  margin: 10px 0 0;
+  font-family: var(--f-mono);
+  font-size: 13px;
+  color: var(--accent);
+}
+
 .scheme { margin-top: 14px; font-size: 18px; color: var(--ink-2); }
 
 .rule { height: 1px; background: var(--line); margin: 26px 0 18px; }
