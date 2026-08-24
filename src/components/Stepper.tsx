@@ -37,6 +37,18 @@ export function Stepper({
 }) {
   const timers = useRef<{ hold?: ReturnType<typeof setTimeout>; repeat?: ReturnType<typeof setInterval> }>({});
 
+  /**
+   * The *current* `onStep`, for the repeat to call.
+   *
+   * Not a nicety. `onStep` is rebuilt on every render and closes over the value
+   * it was rendered with, so an interval holding the first one recomputes
+   * "1 + 1" forever: the number moves one step and then sticks, however long the
+   * button is held. Reading it through a ref means each repeat runs the callback
+   * belonging to the value now on screen.
+   */
+  const latest = useRef(onStep);
+  latest.current = onStep;
+
   const stop = useCallback(() => {
     clearTimeout(timers.current.hold);
     clearInterval(timers.current.repeat);
@@ -49,9 +61,9 @@ export function Stepper({
 
   const press = (direction: -1 | 1) => {
     stop();
-    onStep(direction);
+    latest.current(direction);
     timers.current.hold = setTimeout(() => {
-      timers.current.repeat = setInterval(() => onStep(direction), REPEAT_MS);
+      timers.current.repeat = setInterval(() => latest.current(direction), REPEAT_MS);
     }, HOLD_MS);
   };
 
