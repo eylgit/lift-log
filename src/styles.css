@@ -510,3 +510,27 @@ button.quiet {
   border-top: 1.5px dashed var(--accent-half);
   margin-left: 8px;
 }
+
+/* A note is a sentence, not a figure, so it wraps and drops the mono. */
+.kv .v.note {
+  font-family: var(--f-display);
+  font-size: 13px;
+  color: var(--ink-2);
+  max-width: 62%;
+}
+
+/* --------------------------------------------------------- backfill (E3) */
+
+/* The one native control in the app. A date is the value a phone already has a
+   better picker for than anything drawn here, and the tap-to-edit stepper is
+   the wrong shape for one — thirty steps to last month. */
+.date {
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--ink);
+  background: var(--surf);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 9px;
+}
+.date:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

@@ -174,6 +174,11 @@ export type SessionDetail = {
   readonly targetReps: number;
   readonly startedAt: Instant;
   readonly finishedAt: Instant | null;
+  /**
+   * Anything else true about this session. Written by backfill and by nothing
+   * else today (E3.1, and `BACKFILL_NOTE` in `src/session.ts`).
+   */
+  readonly note: string | null;
 };
 
 /** Everything the history screen draws. */
@@ -428,6 +433,7 @@ export function detailOf(
     targetReps: sets.reduce((total, set) => total + set.targetReps, 0),
     startedAt: session.startedAt,
     finishedAt: session.finishedAt,
+    note: session.note,
   };
 }
 

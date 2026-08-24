@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
+import { BackfillScreen } from "./screens/Backfill";
 import { BackupScreen } from "./screens/Backup";
 import { DetailScreen } from "./screens/Detail";
 import { HistoryScreen } from "./screens/History";
@@ -99,7 +100,16 @@ export default function App() {
           heat={screen.history.heat}
           log={screen.history.log}
           onOpen={actions.openDetail}
+          onAdd={actions.openBackfill}
           onBack={actions.dismiss}
+        />
+      )}
+
+      {screen.name === "backfill" && (
+        <BackfillScreen
+          setup={screen.setup}
+          onSave={actions.saveBackfill}
+          onBack={actions.openHistory}
         />
       )}
 

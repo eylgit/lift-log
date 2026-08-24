@@ -623,8 +623,31 @@ a line goes is testable without a browser.*
 
 ## E3 — Backfill
 - **E3.1** Manual entry for a session done away from the phone: exercise, date, weight, reps per
-  side per set.
-- **E3.2** Backfilled sessions go through the same engine path as live ones.
+  side per set. *(Done. Reached from the History screen rather than from the card — a gap in the
+  log is something you notice while looking at the log. Built from the parts that already exist:
+  the lift is the same `TapChoice` stepper the card switches lifts with, every number is
+  tap-to-edit (INV-7), and the only native control is the date, because a date is the one value a
+  phone already has a better picker for than anything this app could draw. Changing the reps or
+  the number of sets rewrites every side back to the target, which loses a correction on purpose:
+  the shape is what you set first and the corrections come after, and any other rule would be one
+  nobody could predict from the screen. Save is disabled while the write is in flight, because a
+  double tap would otherwise write the session twice and nothing about the log would stop it.)*
+- **E3.2** Backfilled sessions go through the same engine path as live ones. *(Done, and "the same
+  path" turned out to mean **replay** rather than `closeSession`'s incremental fold. A live session
+  is always the newest thing in the log, so folding it into the cache is safe; a backfill usually
+  is not. Adding last Tuesday changes what every session after it was standing on — including
+  whether a stall a fortnight ago was a stall — and only a replay from the beginning can work that
+  out (INV-2, C3.1). `backfillSession` therefore writes its rows and calls `rebuildState`, the
+  same two steps the delete in E1.3 takes.*
+
+  *Three smaller decisions. `prescribedKg` equals `actualKg`, because the engine never asked for
+  this session and inventing a prescription would put a phantom override on the detail screen.
+  The status is always `complete` — a session somebody types in is one they did, and one cut short
+  is already expressible in the rep counts, which is the number the engine reads anyway (INV-4).
+  And the session carries a note saying it was added later, written as a sentence rather than a
+  flag: `Session.note` is the field the model already has, it needs no migration, and it survives
+  the export. The detail screen decides whether to print a start time from `startedAt ===
+  finishedAt`, which is a property of the row rather than a guess about its note.)*
 
 ### Exit criteria — Part E
 - [x] The chart renders correctly with 1, 2 and 200 sessions, and with a gap in the middle.

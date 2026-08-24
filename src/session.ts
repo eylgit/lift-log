@@ -23,17 +23,21 @@
 import type {
   EngineState,
   Exercise,
+  ExerciseId,
   Instant,
   OutcomeResult,
   Prescription,
   Session,
+  SessionId,
   SessionStatus,
   SetLog,
   Side,
+  TrainingDay,
 } from "./engine";
 import { SESSION_SCHEME, applyOutcome, initialState } from "./engine";
 import { trainingDay } from "./clock";
 import type { Repo } from "./db";
+import { rebuildState } from "./db";
 
 /**
  * A new row id. It only has to be unique and survive JSON unchanged (C4).
@@ -419,6 +423,131 @@ export async function closeSession(
 
   await repo.putEngineState([result.state]);
   return result;
+}
+
+/* ---------------------------------------------------------- backfill (E3) */
+
+/**
+ * What a backfilled session says about itself.
+ *
+ * A note rather than a flag on the row, because `Session.note` is the field the
+ * data model already has for "something else that is true about this session",
+ * it needs no migration, and it survives the export unchanged (C4). It is
+ * written as a sentence rather than a marker for the same reason: if it is ever
+ * shown beside a note the athlete wrote themselves, it should read like one.
+ *
+ * It is also what the detail screen keys nothing off. That screen decides
+ * whether to print a start time from `startedAt === finishedAt`, which is a
+ * property of the row rather than a guess about its note — see `DetailScreen`.
+ */
+export const BACKFILL_NOTE = "Added later — not logged at the time.";
+
+/**
+ * A session done away from the phone (E3.1).
+ *
+ * `sets` is reps done, one array per set, in the order the runner writes them:
+ * the weak side first and then the other (D2.4). A set with one entry is one
+ * side, which is what a session abandoned between sides looks like.
+ */
+export type Backfill = {
+  readonly exerciseId: ExerciseId;
+  readonly trainingDay: TrainingDay;
+  readonly weightKg: number;
+  /** What the reps below are measured against (INV-4). */
+  readonly targetReps: number;
+  readonly sets: readonly (readonly number[])[];
+};
+
+/**
+ * Write a session that happened somewhere else (E3.1, E3.2).
+ *
+ * The rows are the same rows a live session writes — one `Session`, one
+ * `SetLog` per side, the sides in weak-first order — because a backfilled
+ * session is not a different kind of fact. Nothing downstream needs to know it
+ * was typed in rather than tapped through: the calendar, the list, the chart
+ * and the engine all read it as what it is, a session that happened on a day.
+ *
+ * Two decisions worth stating.
+ *
+ * **`prescribedKg` equals `actualKg`.** The engine never asked for this
+ * session, so there is no prescription for the weight to differ from, and
+ * inventing one would put a phantom override on the detail screen (INV-7).
+ *
+ * **The cache is rebuilt rather than advanced.** This is E3.2 — "backfilled
+ * sessions go through the same engine path as live ones" — and replay is that
+ * path, taken from the beginning. `closeSession` can fold one session into the
+ * cache because a live session is always the newest thing in the log; a
+ * backfill is usually not. Adding last Tuesday to the log changes what every
+ * session after it was standing on, and only a replay can work that out
+ * (INV-2, C3.1).
+ *
+ * The status is always `complete`. A session somebody is going to the trouble
+ * of typing in is one they did, and a session cut short is already expressible
+ * in the rep counts — which is the number the engine reads anyway (INV-4).
+ */
+export async function backfillSession(
+  repo: Repo,
+  draft: Backfill,
+  now: Date = new Date(),
+): Promise<SessionId> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.trainingDay)) {
+    throw new RangeError(`trainingDay must be YYYY-MM-DD, got ${draft.trainingDay}`);
+  }
+  if (!(draft.weightKg > 0)) {
+    throw new RangeError(`weight must be above zero, got ${draft.weightKg}`);
+  }
+  if (!Number.isInteger(draft.targetReps) || draft.targetReps < 1) {
+    throw new RangeError(`targetReps must be a whole number of at least one`);
+  }
+  const sides = draft.sets.flat();
+  if (sides.length === 0) {
+    throw new RangeError("a session with no sides logged is not a session");
+  }
+  if (sides.some((reps) => !Number.isInteger(reps) || reps < 0)) {
+    throw new RangeError("every side must be a whole number of reps, zero or more");
+  }
+
+  const exercise = (await repo.listExercises()).find((e) => e.id === draft.exerciseId);
+  if (exercise === undefined) {
+    throw new RangeError(`no lift called ${draft.exerciseId} is in the rotation`);
+  }
+
+  const at = now.toISOString();
+  const session: Session = {
+    id: newId(),
+    exerciseId: exercise.id,
+    // The one instant this session has: when the record was made. The screen
+    // reads `startedAt === finishedAt` and declines to call it a start time.
+    startedAt: at,
+    finishedAt: at,
+    trainingDay: draft.trainingDay,
+    prescribedKg: draft.weightKg,
+    actualKg: draft.weightKg,
+    status: "complete",
+    note: BACKFILL_NOTE,
+    deletedAt: null,
+  };
+
+  const logs: SetLog[] = [];
+  for (const [setNumber, set] of draft.sets.entries()) {
+    for (const [sideIndex, doneReps] of set.entries()) {
+      const ordinal = setNumber * 2 + sideIndex;
+      logs.push({
+        id: newId(),
+        sessionId: session.id,
+        ordinal,
+        side: sideAt(ordinal, exercise.weakSide),
+        targetReps: draft.targetReps,
+        doneReps,
+        loggedAt: at,
+      });
+    }
+  }
+
+  await repo.appendSession(session);
+  await repo.appendSets(logs);
+  await rebuildState(repo);
+  return session.id;
 }
 
 /* ------------------------------------------------------------- the reads */

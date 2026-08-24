@@ -48,6 +48,10 @@ export function DetailScreen({
 }) {
   const [confirming, setConfirming] = useState(false);
   const overridden = detail.actualKg !== detail.prescribedKg;
+  // A session that was trained took time; one that was typed in did not. That
+  // is a property of the two timestamps rather than a guess about the note, so
+  // a backfill's clock is not printed as though it were a start time (E3.1).
+  const timed = detail.finishedAt !== null && detail.finishedAt !== detail.startedAt;
 
   return (
     <>
@@ -93,14 +97,24 @@ export function DetailScreen({
           <span className="v">{detail.prescribedKg} kg</span>
         </div>
       )}
-      <div className="kv">
-        <span className="k">STARTED</span>
-        <span className="v">{clockTime(detail.startedAt)}</span>
-      </div>
-      {took(detail) !== null && (
+      {timed && (
+        <>
+          <div className="kv">
+            <span className="k">STARTED</span>
+            <span className="v">{clockTime(detail.startedAt)}</span>
+          </div>
+          {took(detail) !== null && (
+            <div className="kv">
+              <span className="k">TOOK</span>
+              <span className="v">{took(detail)}</span>
+            </div>
+          )}
+        </>
+      )}
+      {detail.note !== null && (
         <div className="kv">
-          <span className="k">TOOK</span>
-          <span className="v">{took(detail)}</span>
+          <span className="k">NOTE</span>
+          <span className="v note">{detail.note}</span>
         </div>
       )}
 
@@ -196,8 +210,9 @@ function clockTime(at: string): string {
  * How long the session took, or null if it never closed.
  *
  * Rounded to the minute and never to zero: a session logged in under thirty
- * seconds — a backfill, most likely (E3) — reads as "under a minute" rather
- * than as "0 min", which looks like a bug in the timer.
+ * seconds reads as "under a minute" rather than as "0 min", which looks like a
+ * bug in the timer. A backfill never reaches here — it has no duration at all
+ * and the screen does not print one.
  */
 export function took(detail: SessionDetail): string | null {
   if (detail.finishedAt === null) return null;

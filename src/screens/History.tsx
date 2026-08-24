@@ -32,11 +32,13 @@ export function HistoryScreen({
   heat,
   log,
   onOpen,
+  onAdd,
   onBack,
 }: {
   heat: HeatMap;
   log: readonly SessionRow[];
   onOpen: (id: SessionId) => void;
+  onAdd: () => void;
   onBack: () => void;
 }) {
   return (
@@ -119,6 +121,12 @@ export function HistoryScreen({
       )}
 
       <div className="grow" />
+
+      {/* E3 lives here rather than on the card: a gap in the log is something
+          you notice while looking at the log. */}
+      <button className="missed" onClick={onAdd}>
+        Add a session I did elsewhere
+      </button>
 
       <p className="hint">
         An empty square is a rest day and costs nothing. The rotation is a

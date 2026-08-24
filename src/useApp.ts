@@ -29,8 +29,9 @@ import type { History, SessionDetail } from "./history";
 import { loadDetail, loadHistory } from "./history";
 import type { Progress } from "./progress";
 import { loadProgress } from "./progress";
-import type { SessionView } from "./session";
+import type { Backfill, SessionView } from "./session";
 import {
+  backfillSession,
   closeSession,
   logSide as logSideOf,
   resumeSession,
@@ -39,6 +40,7 @@ import {
   setWeight as setWeightOf,
   startSession,
 } from "./session";
+import type { BackfillSetup } from "./screens/Backfill";
 import type { BackupState } from "./screens/Backup";
 import type { Today } from "./today";
 import { loadToday } from "./today";
@@ -81,7 +83,8 @@ export type Screen =
   | { readonly name: "backup"; readonly state: BackupState }
   | { readonly name: "history"; readonly history: History }
   | { readonly name: "detail"; readonly detail: SessionDetail }
-  | { readonly name: "progress"; readonly progress: Progress };
+  | { readonly name: "progress"; readonly progress: Progress }
+  | { readonly name: "backfill"; readonly setup: BackfillSetup };
 
 /** Today's session as the athlete has adjusted it. */
 export type Plan = {
@@ -131,6 +134,13 @@ export type Actions = {
   readonly deleteSession: () => void;
   /** Open the sawtooth for today's lift, or for one named (E2). */
   readonly openProgress: (exerciseId?: ExerciseId) => void;
+
+  /* ----------------------------------------------------- backfill (E3) */
+
+  /** Open the form for a session done away from the phone. */
+  readonly openBackfill: () => void;
+  /** Write it, replay the log, and show the calendar with it in. */
+  readonly saveBackfill: (draft: Backfill) => void;
 
   /* ------------------------------------------------------- backup (F1) */
 
@@ -390,6 +400,60 @@ export function useApp(): readonly [Screen, Actions] {
     [run],
   );
 
+  /* ---------------------------------------------------------- backfill (E3) */
+
+  const openBackfill = useCallback(() => {
+    void run(async () => {
+      const repo = await openRepo();
+      const [rotation, states, equipment] = await Promise.all([
+        repo.listExercises(),
+        repo.listEngineState(),
+        repo.getEquipment(),
+      ]);
+      return {
+        name: "backfill",
+        setup: {
+          rotation,
+          today: trainingDay(),
+          // What each lift is at now, so the weight starts somewhere true
+          // rather than at zero. It is a starting point and not a claim about
+          // the session: it is tap-editable like every other weight (INV-7).
+          currentKg: new Map(states.map((state) => [state.exerciseId, state.currentKg])),
+          stepKg: equipment.stepKg,
+          busy: false,
+        },
+      };
+    });
+  }, [run]);
+
+  /**
+   * Save a session that happened somewhere else (E3.1).
+   *
+   * `busy` is set before the write and the screen disables Save while it is on,
+   * because the second tap of a double tap would otherwise write the session
+   * twice — and unlike everything else in the app, there is nothing about the
+   * log that would stop it. A duplicate is a real fact about a day that only
+   * held one session, and the only way back is to delete one.
+   *
+   * The calendar is what comes next rather than the card. A backfill is a
+   * statement about the past and the calendar is where the past is; landing on
+   * Today would leave the athlete looking for the square they just filled.
+   */
+  const saveBackfill = useCallback(
+    (draft: Backfill) => {
+      const here = current.current;
+      if (here.name !== "backfill" || here.setup.busy) return;
+      setScreen({ ...here, setup: { ...here.setup, busy: true } });
+
+      void run(async () => {
+        const repo = await openRepo();
+        await backfillSession(repo, draft);
+        return { name: "history", history: await loadHistory(repo, trainingDay()) };
+      });
+    },
+    [run],
+  );
+
   /* ----------------------------------------------------------- backup (F1) */
 
   const readBackup = useCallback(async (over: Partial<BackupState> = {}): Promise<Screen> => {
@@ -573,6 +637,8 @@ export function useApp(): readonly [Screen, Actions] {
       openDetail,
       deleteSession,
       openProgress,
+      openBackfill,
+      saveBackfill,
       openBackup,
       download,
     },
