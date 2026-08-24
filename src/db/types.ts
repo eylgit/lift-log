@@ -39,6 +39,16 @@ export type Settings = {
    * screen without reading it. See `backupStatus` in `src/durability.ts`.
    */
   readonly lastNudgedAt: string | null;
+  /**
+   * ISO instant onboarding was finished, or null if it never has been (G1).
+   *
+   * The app asks its four questions once, and this is the record that it did.
+   * It is not the only test — `needsOnboarding` in `src/onboarding.ts` also
+   * requires an empty log — because a backup taken before this field existed
+   * restores as null, and marching somebody through setup on top of a year of
+   * training would be the app forgetting who it was talking to.
+   */
+  readonly onboardedAt: string | null;
   /** What version of this schema wrote the data. Also goes in the export (C4). */
   readonly schemaVersion: number;
 };

@@ -572,3 +572,89 @@ button.quiet {
   vertical-align: -3px;
   color: var(--accent);
 }
+
+/* ------------------------------------------------------- onboarding (G1) */
+
+/* The step, chosen from six. A grid rather than a stepper because a stranger
+   on the first screen of the app does not know what number belongs here, and
+   every tile is a real thing a real rack does (G1.1). Three across at 52px is
+   comfortably over the 44px floor H1.1 sets. */
+.choices {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+  margin: 4px 0 14px;
+}
+.choice {
+  min-height: 62px;
+  border-radius: 12px;
+  background: var(--surf);
+  border: 1px solid var(--line);
+  font-family: var(--f-mono);
+  font-size: 19px;
+  color: var(--ink-2);
+}
+.choice:active { background: var(--soft); }
+/* Chosen is a fill and a weight, not a colour alone (H1.1, INV-8). */
+.choice.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+/* An explanation that runs to a paragraph. `.footnote` is centred mono, which
+   is right for a line and unreadable for six of them. */
+.aside {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+/* Step and dots as one group, so the dots do not move when Back appears. */
+.wizard-at { display: flex; align-items: center; gap: 14px; }
+
+/* A question and its heading, which elsewhere in the app has a card under it. */
+.lift + .prompt { margin-top: 14px; }
+
+/* Five lifts, five weak sides (G1.3). */
+.sides { list-style: none; margin: 4px 0 0; padding: 0; }
+.side-row + .side-row { margin-top: 14px; }
+.side-lift {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 15px;
+  color: var(--ink-2);
+}
+
+/* Left · Right · Not sure. One control, three targets, no gaps to miss. */
+.seg {
+  display: flex;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--surf);
+}
+.seg button {
+  flex: 1;
+  min-height: 48px;
+  font-family: var(--f-mono);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+}
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button:active { background: var(--soft); }
+.seg button.on {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+/* The default answer, held rather than chosen. Legible, but it does not claim
+   the athlete decided anything (G1.3). */
+.seg button.on.soft {
+  background: var(--surf-2);
+  color: var(--ink-2);
+  font-weight: 600;
+}

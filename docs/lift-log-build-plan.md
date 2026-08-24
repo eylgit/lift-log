@@ -785,16 +785,68 @@ tolerating nonsense — a field of the wrong type is still refused.*
 **Effort.** A few evenings.
 
 ## G1 — Onboarding
+*The decisions are `src/onboarding.ts` — plain functions over values, so what the answers resolve
+to and when the app asks at all are checkable without a browser. The screens are
+`src/screens/Onboarding.tsx`, which owns the wizard's step and draft the way `Backfill` owns its
+own: until Finish there is nothing to write, so there is nothing for the state machine to hold.*
+
 - **G1.1** Ask **one number**: the smallest jump you can make. That is everything the engine needs.
-  Do not build a plate inventory UI, and do not ask for a lightest weight — the weights that exist
-  are the multiples of the step (B2.2.2). Say plainly on this screen that it is also how fast you
-  progress: one step per clean session.
+  Do not build a plate inventory UI, and do not ask for a lightest weight. Say plainly on this
+  screen that it is also how fast you progress: one step per clean session.
+
+  *Corrected here.* This sub-step used to justify not asking for a lightest weight with "the
+  weights that exist are the multiples of the step (B2.2.2)" — and B2.2.2 says the opposite. It
+  threw the grid out: a fixed rack runs 5, 10, 12.5, 15, 17.5, 20, 22.5 and no single number
+  describes those gaps, so the step makes **no claim about which weights can be loaded**. The
+  clause was a leftover from the draft that had a grid in it, and it survived into a sub-step
+  whose conclusion did not depend on it. The real reason is G1.2's: the start weights are not
+  asked for at all, so there is no lightest weight to ask about.
+
+  *(Done. Six choices — 0.5, 1, 1.25, 2, 2.5, 5 — and not a stepper, because a stranger on the
+  first screen of an app they have never used does not know what number belongs there and a blank
+  stepper starting at 1 asks them to guess. 1.25 is on the list and would be on no grid of halves:
+  it is what a pair of micro-plates gives you, and leaving it off would have quietly told every
+  athlete who owns them to pick something else. The rate is stated as arithmetic that moves under
+  the tap — "10 clean sessions at 2.5 kg is 25 kg heavier" — because that is the consequential
+  half of the question and nobody expects a number about dumbbells to also be a number about how
+  fast they get stronger.)*
 - **G1.2** Default all five starting weights to one step behind one button. They are
-  tap-editable afterwards, and the method says start absurdly light.
-- **G1.3** Ask the weak side per exercise, with an "I don't know" default.
+  tap-editable afterwards, and the method says start absurdly light. *(Done, and "behind one
+  button" turned out to mean behind no button at all: the five weights are never shown, because a
+  screen that displays five values only a pedant would change is five decisions charged to a
+  stranger for something the Today card hands back on the first tap (INV-7). `resolveRotation`
+  writes every `startKg` as one step.)*
+- **G1.3** Ask the weak side per exercise, with an "I don't know" default. *(Done. Five rows, three
+  targets each, and "Not sure" is pre-selected so the screen can be walked past without answering
+  anything. It is **drawn differently from a chosen answer** — a muted fill rather than the accent
+  — because five accent-filled defaults read as five decisions the athlete has made on a screen
+  where they have made none. The draft keeps "not sure" as `null` and distinct from "left" right
+  up until the write, which is the only reason the screen can tell the two apart.)*
 - **G1.4** One line: "Set a recurring alarm on your phone for when you want to train" — the app does
-  not do reminders (D3.4).
-- **G1.5** Finish on the install step (F2).
+  not do reminders (D3.4). *(Done, with a paragraph saying why it is advice and not a feature.
+  §10.1: a web app cannot schedule a local notification on iOS at all, so the choice was between a
+  reminder that fires for some athletes and silently never for the rest, or none and a sentence
+  about it.)*
+- **G1.5** Finish on the install step (F2). *(Done, and it is `InstallScreen` itself rather than a
+  copy — there is one argument in the app for Add to Home Screen and one drawn Share flow, and a
+  second version of either would drift. It grew two optional props: the corner button reads "Done"
+  instead of "Back", and a full-width finish button appears at the bottom, because on iOS there is
+  no install button to press and without it the last screen of setup ends in a wall of instructions
+  and a 12px word in the corner.)*
+
+*Two things G1 needed that were not in the plan.*
+
+*A settings field, `onboardedAt`, and a rule with two clauses. The app asks when it is null **and
+the log is empty** — not on the field alone, because a backup taken in Part F has no such field,
+restores as null, and would march somebody through setup on top of the year of training they had
+just recovered. Their answers are in that file; the rotation and the step came back with it. Any
+session at all vetoes the questions, including a planned one nobody closed and a tombstoned one,
+because deleting your whole log is not the same as never having trained (INV-3).*
+
+*And `commitOnboarding` ends with `rebuildState`. That is the one thing here that would have gone
+wrong silently: `engineState` was seeded when the database opened, from a rotation whose start
+weights were all 1 kg, so without the replay the first card would prescribe 1 kg however carefully
+the athlete answered — a wrong number on the first screen a stranger ever sees.*
 
 ## G2 — Sample data
 - **G2.1** A "try it with sample data" switch that seeds ~14 weeks of plausible history, including

@@ -25,17 +25,35 @@ export function InstallScreen({
   state,
   onInstall,
   onBack,
+  backLabel = "Back",
+  onDone,
+  doneLabel,
 }: {
   state: InstallState;
   onInstall: () => void;
   onBack: () => void;
+  /**
+   * What the corner button says. "Back" everywhere except the last step of
+   * onboarding (G1.5), which has nothing behind it to go back to.
+   */
+  backLabel?: string;
+  /**
+   * A way out at the bottom of the screen, for onboarding.
+   *
+   * The corner button is enough for somebody who navigated here on purpose. It
+   * is not enough for a stranger on the last screen of setup: on iOS there is
+   * no install button to press, so without this the screen ends in a wall of
+   * instructions and a 12px word in the corner.
+   */
+  onDone?: () => void;
+  doneLabel?: string;
 }) {
   return (
     <>
       <div className="row">
         <span className="eyebrow">Install</span>
         <button className="quiet" onClick={onBack}>
-          Back
+          {backLabel}
         </button>
       </div>
 
@@ -84,6 +102,12 @@ export function InstallScreen({
       )}
 
       <div className="grow" />
+
+      {onDone && (
+        <button className="start" onClick={onDone}>
+          {doneLabel ?? "Done"}
+        </button>
+      )}
 
       <p className="hint">
         Installing protects the log from the browser. It does not protect it

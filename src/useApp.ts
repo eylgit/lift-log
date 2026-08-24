@@ -47,6 +47,9 @@ import {
 } from "./session";
 import type { BackfillSetup } from "./screens/Backfill";
 import type { BackupState } from "./screens/Backup";
+import type { OnboardingSetup } from "./screens/Onboarding";
+import type { OnboardingDraft } from "./onboarding";
+import { commitOnboarding, needsOnboarding } from "./onboarding";
 import { heldPrompt, promptToInstall } from "./install";
 import type { Today } from "./today";
 import { loadToday } from "./today";
@@ -92,6 +95,21 @@ export type Screen =
   | { readonly name: "progress"; readonly progress: Progress }
   | { readonly name: "backfill"; readonly setup: BackfillSetup }
   | { readonly name: "install"; readonly state: InstallState }
+  | {
+      readonly name: "onboarding";
+      readonly setup: OnboardingSetup;
+      /**
+       * Whether the answers are in the database (G1).
+       *
+       * The wizard owns which question is on screen, the same way `Backfill`
+       * owns its draft — until Finish there is nothing to write and so nothing
+       * for the machine to hold. This is the one exception: the install step
+       * comes *after* the write, and letting the screen decide it had got there
+       * would put a stranger on it while their answers were still in memory.
+       */
+      readonly saved: boolean;
+      readonly busy: boolean;
+    }
   | {
       readonly name: "nudge";
       readonly status: BackupStatus;
@@ -177,6 +195,11 @@ export type Actions = {
   /** Fire the browser's own install prompt, where there is one (F2.3). */
   readonly install: () => void;
 
+  /* ------------------------------------------------------ onboarding (G1) */
+
+  /** Write the answers to the three setup questions and move to install. */
+  readonly finishOnboarding: (draft: OnboardingDraft) => void;
+
   /* ---------------------------------------------------------- nudge (F3) */
 
   /** Dismiss the backup nudge, and do not ask again for a while (F3.2). */
@@ -242,6 +265,23 @@ export function useApp(): readonly [Screen, Actions] {
       // somebody mid-workout is standing over a dumbbell, and a screen about
       // file backups is the least welcome thing in the world (F3.2).
       const [settings, sessions] = await Promise.all([repo.getSettings(), repo.listSessions()]);
+
+      // Setup comes before either of the two screens below, because both of
+      // them are about a log — and this athlete has not got one yet. See
+      // `needsOnboarding` for why an empty log is half of the test.
+      if (needsOnboarding(settings, sessions)) {
+        const [rotation, equipment] = await Promise.all([
+          repo.listExercises(),
+          repo.getEquipment(),
+        ]);
+        return {
+          name: "onboarding",
+          setup: { rotation, stepKg: equipment.stepKg },
+          saved: false,
+          busy: false,
+        };
+      }
+
       const status = backupStatus(sessions, settings.lastExportedAt, settings.lastNudgedAt);
       if (status.due) return { name: "nudge", status, busy: false };
 
@@ -675,6 +715,37 @@ export function useApp(): readonly [Screen, Actions] {
     })();
   }, [readBackup]);
 
+  /* ------------------------------------------------------- onboarding (G1) */
+
+  /**
+   * Write the three answers, and land on the install step (G1).
+   *
+   * Guarded on `saved` as well as `busy`. `busy` stops the double tap; `saved`
+   * stops the whole thing running twice at all, which matters because the write
+   * ends with `rebuildState` — replaying a log that by then may have a session
+   * in it, against a rotation the athlete has since edited on the card. The
+   * second run would be harmless today and quietly wrong later.
+   *
+   * The screen that comes back is this one again, one field different. It is
+   * the only place in the app where an action returns the screen it started on,
+   * and the alternative is a second state machine inside the wizard for a
+   * transition that happens once and never goes back.
+   */
+  const finishOnboarding = useCallback(
+    (draft: OnboardingDraft) => {
+      const here = current.current;
+      if (here.name !== "onboarding" || here.busy || here.saved) return;
+      setScreen({ ...here, busy: true });
+
+      void run(async () => {
+        const repo = await openRepo();
+        await commitOnboarding(repo, here.setup.rotation, draft, new Date().toISOString());
+        return { ...here, busy: false, saved: true };
+      });
+    },
+    [run],
+  );
+
   /* ------------------------------------------------------------ nudge (F3) */
 
   /**
@@ -826,6 +897,7 @@ export function useApp(): readonly [Screen, Actions] {
       cancelImport,
       openInstall,
       install,
+      finishOnboarding,
       dismissNudge,
     },
   ] as const;

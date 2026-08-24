@@ -17,6 +17,7 @@ import { DetailScreen } from "./screens/Detail";
 import { HistoryScreen } from "./screens/History";
 import { InstallScreen } from "./screens/Install";
 import { NudgeScreen } from "./screens/Nudge";
+import { OnboardingScreen } from "./screens/Onboarding";
 import { ProgressScreen } from "./screens/Progress";
 import { SessionScreen } from "./screens/Session";
 import { SummaryScreen } from "./screens/Summary";
@@ -124,6 +125,20 @@ export default function App() {
           state={screen.state}
           onInstall={actions.install}
           onBack={actions.openBackup}
+        />
+      )}
+
+      {/* G1 — what a fresh install opens on. It asks three questions and ends
+          on the install step, which is the same screen as `install` above. */}
+      {screen.name === "onboarding" && (
+        <OnboardingScreen
+          setup={screen.setup}
+          saved={screen.saved}
+          busy={screen.busy}
+          install={install}
+          onFinish={actions.finishOnboarding}
+          onInstall={actions.install}
+          onDone={actions.dismiss}
         />
       )}
 

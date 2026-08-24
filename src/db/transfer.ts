@@ -507,6 +507,10 @@ function readSettings(value: unknown): Settings {
     lastExportedAt: readNullableString(row, "lastExportedAt", "settings"),
     // Added in F3, so a backup taken before it simply has no such field.
     lastNudgedAt: readOptionalString(row, "lastNudgedAt", "settings"),
+    // Added in G1, on the same terms. Absent reads as null, which is what a
+    // fresh install has — and `needsOnboarding` will not act on it alone,
+    // because the restored log is the better answer to "has this been set up".
+    onboardedAt: readOptionalString(row, "onboardedAt", "settings"),
     schemaVersion: readCount(row, "schemaVersion", "settings"),
   };
 }

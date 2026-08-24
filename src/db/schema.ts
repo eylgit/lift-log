@@ -156,11 +156,12 @@ export const DEFAULT_EQUIPMENT: EquipmentRow = {
 /**
  * The settings row a fresh install starts with (G1).
  *
- * Fields have been added here since v1 — `lastNudgedAt` in F3 — with no schema
- * version bump, for the reason `ExerciseRow` gives above: IndexedDB stores whole
- * objects and only the declared indexes are part of the version. A row written
- * by an older build simply lacks the field, which reads as `undefined`; every
- * caller treats that as null, and the next `saveSettings` writes it properly.
+ * Fields have been added here since v1 — `lastNudgedAt` in F3, `onboardedAt` in
+ * G1 — with no schema version bump, for the reason `ExerciseRow` gives above:
+ * IndexedDB stores whole objects and only the declared indexes are part of the
+ * version. A row written by an older build simply lacks the field, which reads
+ * as `undefined`; every caller treats that as null, and the next
+ * `saveSettings` writes it properly.
  */
 export const DEFAULT_SETTINGS: SettingsRow = {
   id: SINGLETON_ID,
@@ -169,6 +170,7 @@ export const DEFAULT_SETTINGS: SettingsRow = {
   stallThreshold: STALLS_BEFORE_DELOAD,
   lastExportedAt: null,
   lastNudgedAt: null,
+  onboardedAt: null,
   schemaVersion: SCHEMA_VERSION,
 };
 

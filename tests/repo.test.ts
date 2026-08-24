@@ -88,6 +88,7 @@ describe("the setup", () => {
       stallThreshold: DEFAULT_SETTINGS.stallThreshold,
       lastExportedAt: DEFAULT_SETTINGS.lastExportedAt,
       lastNudgedAt: DEFAULT_SETTINGS.lastNudgedAt,
+      onboardedAt: DEFAULT_SETTINGS.onboardedAt,
       schemaVersion: DEFAULT_SETTINGS.schemaVersion,
     });
     await expect(repo.getEquipment()).resolves.toEqual({ stepKg: DEFAULT_EQUIPMENT.stepKg });
