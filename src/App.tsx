@@ -2,13 +2,14 @@
  * The shell (D2).
  *
  * Three things live here and nothing else: the update banner, the storage and
- * connection readout, and which of the three screens is on. Everything the app
- * actually knows is in `useApp`, and everything it says is in `src/screens/`.
+ * connection readout, and which screen is on. Everything the app actually knows
+ * is in `useApp`, and everything it says is in `src/screens/`.
  */
 
 import { useEffect, useState } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { BackupScreen } from "./screens/Backup";
+import { HistoryScreen } from "./screens/History";
 import { SessionScreen } from "./screens/Session";
 import { SummaryScreen } from "./screens/Summary";
 import { TodayScreen } from "./screens/Today";
@@ -89,6 +90,10 @@ export default function App() {
           onDownload={actions.download}
           onBack={actions.dismiss}
         />
+      )}
+
+      {screen.name === "history" && (
+        <HistoryScreen heat={screen.history.heat} onBack={actions.dismiss} />
       )}
 
       {screen.name === "summary" && (

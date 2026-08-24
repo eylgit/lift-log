@@ -13,7 +13,14 @@
 
 import { describe, expect, it } from "vitest";
 
-import { localDay, trainingDay } from "../src/clock";
+import {
+  addDays,
+  daysBetween,
+  localDay,
+  startOfWeek,
+  trainingDay,
+  weekdayIndex,
+} from "../src/clock";
 
 /** A local `Date`, built from local parts, because the cutoff is local. */
 function at(year: number, month: number, day: number, hour: number, minute = 0): Date {
@@ -69,5 +76,64 @@ describe("trainingDay", () => {
     trainingDay(midnight);
 
     expect(midnight.getTime()).toBe(before);
+  });
+});
+
+/* ---------------------------------------------- calendar arithmetic (E1.1) */
+
+describe("addDays", () => {
+  it("moves forwards and backwards", () => {
+    expect(addDays("2026-08-24", 1)).toBe("2026-08-25");
+    expect(addDays("2026-08-24", -1)).toBe("2026-08-23");
+    expect(addDays("2026-08-24", 0)).toBe("2026-08-24");
+  });
+
+  it("crosses months and years", () => {
+    expect(addDays("2026-08-31", 1)).toBe("2026-09-01");
+    expect(addDays("2026-12-31", 1)).toBe("2027-01-01");
+    expect(addDays("2027-01-01", -1)).toBe("2026-12-31");
+  });
+
+  it("knows about leap years", () => {
+    expect(addDays("2028-02-28", 1)).toBe("2028-02-29");
+    expect(addDays("2026-02-28", 1)).toBe("2026-03-01");
+  });
+
+  it("survives a spring-forward night", () => {
+    // The reason the arithmetic is done in UTC. In London, Berlin or Madrid the
+    // 29th of March 2026 is twenty-three hours long, and adding 24 hours of
+    // local time to its midnight lands back on the 29th.
+    expect(addDays("2026-03-29", 1)).toBe("2026-03-30");
+    expect(addDays("2026-10-25", 1)).toBe("2026-10-26");
+  });
+
+  it("refuses something that is not a day", () => {
+    expect(() => addDays("not-a-day", 1)).toThrow(RangeError);
+  });
+});
+
+describe("daysBetween", () => {
+  it("counts forwards, and negative backwards", () => {
+    expect(daysBetween("2026-08-24", "2026-08-31")).toBe(7);
+    expect(daysBetween("2026-08-31", "2026-08-24")).toBe(-7);
+    expect(daysBetween("2026-08-24", "2026-08-24")).toBe(0);
+  });
+
+  it("is the inverse of addDays over a long span", () => {
+    expect(daysBetween("2025-01-01", addDays("2025-01-01", 900))).toBe(900);
+  });
+});
+
+describe("weekdayIndex and startOfWeek", () => {
+  it("counts Monday as zero", () => {
+    // 2026-08-24 is a Monday.
+    expect(weekdayIndex("2026-08-24")).toBe(0);
+    expect(weekdayIndex("2026-08-30")).toBe(6);
+  });
+
+  it("walks back to Monday, and stays put on one", () => {
+    expect(startOfWeek("2026-08-24")).toBe("2026-08-24");
+    expect(startOfWeek("2026-08-30")).toBe("2026-08-24");
+    expect(startOfWeek("2026-08-27")).toBe("2026-08-24");
   });
 });

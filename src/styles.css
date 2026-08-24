@@ -12,6 +12,10 @@
   --accent-deep: #103C72;
   --on-accent: #FFFFFF;
   --soft: #DCE7F5;
+  /* Halfway between the accent and an empty square, for the calendar's "short"
+     day (E1.1). `--soft` was tried first and is too close to `--surf-2` to be
+     told apart at 40 px on a phone. */
+  --accent-half: #87A6CA;
   --good: #16714F;
   --warn: #8A5A08;
 
@@ -330,3 +334,60 @@ button.quiet {
 }
 .status .dot { width: 7px; height: 7px; border-radius: 4px; background: var(--good); }
 .status .dot.off { background: var(--warn); }
+
+/* --------------------------------------------------- history calendar (E1) */
+
+/* Seven squares across and a row per week — a wall calendar, not GitHub's
+   fifty-column strip, because this app is 520 px wide and never scrolls
+   sideways. The gutter on the left carries the month. */
+.cal { margin-top: 4px; }
+
+.cal-head, .cal-week {
+  display: grid;
+  grid-template-columns: 30px repeat(7, 1fr);
+  gap: 5px;
+  align-items: center;
+}
+.cal-week + .cal-week { margin-top: 5px; }
+
+.cal-head {
+  margin-bottom: 8px;
+  font-family: var(--f-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+.cal-head .cal-day { text-align: center; }
+
+.cal-month {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+
+.cal-cell {
+  aspect-ratio: 1;
+  border-radius: 3px;
+  background: var(--surf-2);
+}
+/* Walked out: started, so not blank — but nothing was earned, so not filled. */
+.cal-cell.out { background: var(--surf); border: 1px dashed var(--line-2); }
+.cal-cell.short { background: var(--accent-half); }
+.cal-cell.clean { background: var(--accent); }
+/* A day that has not happened yet is a hole, not an empty square. */
+.cal-cell.hole { background: none; }
+.cal-cell.today { box-shadow: 0 0 0 1.5px var(--ink); }
+
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 18px;
+  font-family: var(--f-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+.legend .cal-cell { width: 11px; aspect-ratio: 1; flex: none; }
+.legend .cal-cell + .cal-cell { margin-left: 8px; }

@@ -23,7 +23,7 @@ export function TodayScreen({
   actions: Actions;
 }) {
   const { prescription: rx, dayIndex, rotationLength, last, change } = today;
-  const { rotation, stepKg, restTargetS, lastExportedAt } = today;
+  const { rotation, stepKg, restTargetS, loggedSessions, lastExportedAt } = today;
   const chosenWeight = plan.weightKg !== rx.weightKg;
   const names = new Map(rotation.map((e) => [e.id, e.name] as const));
 
@@ -117,6 +117,14 @@ export function TodayScreen({
         <span className="v">{trainingDay()}</span>
       </div>
       <div className="kv">
+        <span className="k">HISTORY</span>
+        <span className="v">
+          <button className="tap" onClick={actions.openHistory}>
+            {historyLine(loggedSessions)}
+          </button>
+        </span>
+      </div>
+      <div className="kv">
         <span className="k">LAST BACKUP</span>
         <span className="v">
           <button className="tap" onClick={actions.openBackup}>
@@ -137,6 +145,18 @@ export function TodayScreen({
       </button>
     </>
   );
+}
+
+/**
+ * The door to the calendar (E1.1).
+ *
+ * A count rather than the word "history", because the count is the interesting
+ * part and it only ever goes up. "nothing yet" for an empty log — not "0
+ * sessions", which reads like a score.
+ */
+export function historyLine(sessions: number): string {
+  if (sessions === 0) return "nothing yet — see the calendar";
+  return `${sessions} ${sessions === 1 ? "session" : "sessions"}`;
 }
 
 /**

@@ -22,8 +22,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Format } from "./backup";
 import { saveFile } from "./backup";
+import { trainingDay } from "./clock";
 import { exportCsv, exportJson, openRepo } from "./db";
 import type { Exercise, ExerciseId, OutcomeResult, Side } from "./engine";
+import type { History } from "./history";
+import { loadHistory } from "./history";
 import type { SessionView } from "./session";
 import {
   closeSession,
@@ -73,7 +76,8 @@ export type Screen =
       readonly view: SessionView;
       readonly outcome: OutcomeResult;
     }
-  | { readonly name: "backup"; readonly state: BackupState };
+  | { readonly name: "backup"; readonly state: BackupState }
+  | { readonly name: "history"; readonly history: History };
 
 /** Today's session as the athlete has adjusted it. */
 export type Plan = {
@@ -112,6 +116,11 @@ export type Actions = {
   readonly chooseRest: (seconds: number) => void;
   /** Mid-session: log the side you actually did, if it was not the one offered. */
   readonly flipSide: () => void;
+
+  /* ------------------------------------------------------ history (E1) */
+
+  /** Open the history calendar. */
+  readonly openHistory: () => void;
 
   /* ------------------------------------------------------- backup (F1) */
 
@@ -273,6 +282,24 @@ export function useApp(): readonly [Screen, Actions] {
     },
     [run],
   );
+
+  /* ---------------------------------------------------------- history (E1) */
+
+  /**
+   * Read the log and show the calendar.
+   *
+   * Today's date is read here rather than inside `loadHistory`, because that is
+   * where the clock lives (`src/clock.ts`) and it is what keeps the history
+   * module testable without freezing time. It is read at the moment the screen
+   * opens, not when the app started: an app left open overnight and reopened in
+   * the morning should mark the right square as today.
+   */
+  const openHistory = useCallback(() => {
+    void run(async () => {
+      const repo = await openRepo();
+      return { name: "history", history: await loadHistory(repo, trainingDay()) };
+    });
+  }, [run]);
 
   /* ----------------------------------------------------------- backup (F1) */
 
@@ -453,6 +480,7 @@ export function useApp(): readonly [Screen, Actions] {
       flipWeakSide,
       chooseRest,
       flipSide,
+      openHistory,
       openBackup,
       download,
     },

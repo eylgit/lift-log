@@ -561,7 +561,15 @@ everything after is improvement, not enablement.
 **Effort.** One weekend.
 
 ## E1 — History
-- **E1.1** Calendar heat map, one cell per day, driven by `trainingDay`.
+- **E1.1** Calendar heat map, one cell per day, driven by `trainingDay`. *(Done. Weeks are rows
+  and weekdays are columns — a wall calendar rather than GitHub's fifty-column strip, which needs
+  horizontal room this app does not have. Four outcomes and no scale of effort: rested, walked
+  out, short, clean, with "clean" coming from the engine's own `isClean` so a square cannot
+  disagree with the weight the card prescribes. The window opens on the week of the first logged
+  session, is never shorter than four weeks and never longer than 270, that last being a guard
+  against one mistyped date in an imported file asking for fifty thousand squares. Days after
+  today are holes rather than empty squares. Reached from a new `HISTORY` row on the Today card.
+  Nothing on the screen is a streak.)*
 - **E1.2** Reverse-chronological session list, tappable through to every set.
 - **E1.3** Session detail with a soft-delete action (INV-3) behind a confirm.
 

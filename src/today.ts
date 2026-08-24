@@ -110,6 +110,18 @@ export type Today = RotationDay & {
   /** The athlete's step, which is what the weight stepper moves by (D5.4). */
   readonly stepKg: number;
   /**
+   * How many sessions have been trained and finished, ever (E1).
+   *
+   * On the card because it is the way through to the history calendar, and a
+   * count is a better label for that door than the word "history" is. Finished
+   * only: a session still `planned` is one nobody closed or the one being
+   * trained right now, and neither has happened yet — the same rule
+   * `lastResultFor` applies a few lines up.
+   *
+   * It counts up and never down. Nothing here is a streak (INV-6, §5).
+   */
+  readonly loggedSessions: number;
+  /**
    * When the log was last written to a file, or null if it never has been (F3).
    *
    * On the card because it is the one number here that is about losing
@@ -325,6 +337,7 @@ export async function loadToday(repo: Repo, chosenLift?: ExerciseId): Promise<To
     change: describeChange(day.prescription.weightKg, last, equipment.stepKg),
     rotation: exercises,
     stepKg: equipment.stepKg,
+    loggedSessions: sessions.filter((session) => session.status !== "planned").length,
     lastExportedAt: settings.lastExportedAt,
     restTargetS: settings.restTargetS,
   };
