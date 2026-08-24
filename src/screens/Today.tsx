@@ -10,16 +10,20 @@
 import { TapChoice, TapNumber, TapToggle } from "../components/TapValue";
 import { trainingDay } from "../clock";
 import type { ExerciseId, Side } from "../engine";
+import type { InstallState } from "../platform";
 import type { Actions, Plan } from "../useApp";
 import type { LastResult, Today, WeightChange } from "../today";
 
 export function TodayScreen({
   today,
   plan,
+  install,
   actions,
 }: {
   today: Today;
   plan: Plan;
+  /** How the app is running, for the install row (F2). */
+  install: InstallState;
   actions: Actions;
 }) {
   const { prescription: rx, dayIndex, rotationLength, last, change } = today;
@@ -140,6 +144,18 @@ export function TodayScreen({
           </button>
         </span>
       </div>
+      {/* Only where it is worth a row. An installed app has nothing to do here,
+          and a desktop browser that cannot install has nothing to offer (F2). */}
+      {install !== "installed" && install !== "browser" && (
+        <div className="kv">
+          <span className="k">INSTALL</span>
+          <span className="v">
+            <button className="tap" onClick={actions.openInstall}>
+              {install === "ios-browser" ? "not on your home screen" : "add to this device"}
+            </button>
+          </span>
+        </div>
+      )}
 
       <p className="hint">A dotted underline means you can tap it.</p>
 

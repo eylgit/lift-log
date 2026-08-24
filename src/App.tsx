@@ -8,10 +8,15 @@
 
 import { useEffect, useState } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
+import type { InstallState } from "./platform";
+import { installState, readPlatform } from "./platform";
+import { heldPrompt, watchForInstallPrompt } from "./install";
 import { BackfillScreen } from "./screens/Backfill";
 import { BackupScreen } from "./screens/Backup";
 import { DetailScreen } from "./screens/Detail";
 import { HistoryScreen } from "./screens/History";
+import { InstallScreen } from "./screens/Install";
+import { NudgeScreen } from "./screens/Nudge";
 import { ProgressScreen } from "./screens/Progress";
 import { SessionScreen } from "./screens/Session";
 import { SummaryScreen } from "./screens/Summary";
@@ -22,6 +27,9 @@ export default function App() {
   const [screen, actions] = useApp();
   const [online, setOnline] = useState(navigator.onLine);
   const [persisted, setPersisted] = useState<boolean | null>(null);
+  const [install, setInstall] = useState<InstallState>(() =>
+    installState(readPlatform(heldPrompt())),
+  );
 
   // The one update rule: never swap code out from under a session.
   // registerType is "prompt", so the new version waits for an explicit tap —
@@ -43,6 +51,13 @@ export default function App() {
   useEffect(() => {
     // Ask the browser to keep our data through storage pressure. It may say no.
     navigator.storage?.persist?.().then(setPersisted).catch(() => setPersisted(false));
+  }, []);
+
+  useEffect(() => {
+    // `main.tsx` starts listening before React exists, because the event fires
+    // before React exists. This second call is what tells the app when one
+    // arrives late, or when the app is installed while it is open (F2.3).
+    watchForInstallPrompt(() => setInstall(installState(readPlatform(heldPrompt()))));
   }, []);
 
   return (
@@ -75,7 +90,12 @@ export default function App() {
       {screen.name === "failed" && <div className="grow" />}
 
       {screen.name === "today" && (
-        <TodayScreen today={screen.today} plan={screen.plan} actions={actions} />
+        <TodayScreen
+          today={screen.today}
+          plan={screen.plan}
+          install={install}
+          actions={actions}
+        />
       )}
 
       {screen.name === "session" && (
@@ -91,7 +111,30 @@ export default function App() {
         <BackupScreen
           state={screen.state}
           onDownload={actions.download}
+          onPick={actions.pickImport}
+          onImport={actions.runImport}
+          onCancelImport={actions.cancelImport}
+          onInstall={actions.openInstall}
           onBack={actions.dismiss}
+        />
+      )}
+
+      {screen.name === "install" && (
+        <InstallScreen
+          state={screen.state}
+          onInstall={actions.install}
+          onBack={actions.openBackup}
+        />
+      )}
+
+      {/* F3.2 — the one screen that interrupts. It is shown instead of Today on
+          open, never over a session, and "Not now" is a real way past it. */}
+      {screen.name === "nudge" && (
+        <NudgeScreen
+          status={screen.status}
+          busy={screen.busy}
+          onBackUp={() => actions.download("json")}
+          onDismiss={actions.dismissNudge}
         />
       )}
 

@@ -534,3 +534,41 @@ button.quiet {
   padding: 7px 9px;
 }
 .date:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ------------------------------------------------------- durability (F1–F4) */
+
+/* The picker is driven by a button, because a bare file input cannot be made
+   to look like anything and this one has to sit quietly under two downloads. */
+.hidden-file { display: none; }
+
+/* The one place the app raises its voice: a real and near-term way to lose
+   everything (§9.2, threat 2). Still a sentence, not a colour-filled alarm. */
+.notice.warn {
+  margin-top: 18px;
+  padding: 13px 14px;
+  border-radius: 3px;
+  background: var(--surf);
+  border-left: 3px solid var(--warn);
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+/* Add to Home Screen, drawn — iOS offers no prompt to fire (F2.2). */
+.steps {
+  margin: 0;
+  padding: 0 0 0 1.3em;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+.steps li + li { margin-top: 12px; }
+.steps strong { color: var(--ink); font-weight: 600; }
+
+/* The Share glyph. Inline SVG rather than Apple's private-use character, which
+   is an empty box on every other platform. */
+.glyph {
+  width: 17px;
+  height: 17px;
+  vertical-align: -3px;
+  color: var(--accent);
+}

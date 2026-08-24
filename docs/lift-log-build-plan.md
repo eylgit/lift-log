@@ -670,45 +670,111 @@ a line goes is testable without a browser.*
 *Part of F1 and F3.1 were pulled forward at the end of Part D, at the owner's request and on this
 plan's own standing instruction — "ship export in Part C, not Part F; from Part D the data is
 real". The bytes had existed since C4 with no button attached, which meant a real log with no way
-to get it out. What exists now: a Back up screen reached from the Today card, Download backup
-(JSON) and Download a spreadsheet (CSV), and `lastExportedAt` written only when the full backup
-actually left the app. The rest of F1 and all of F2/F3/F4 are untouched.*
+to get it out. That gave the Back up screen, both downloads, and `lastExportedAt` written only when
+the full backup actually left the app. **The rest was built after Part E** and the whole of F1–F4
+is now done, bar one exit criterion that needs real hardware.*
 
 ## F1 — Persistence and honesty
 - **F1.1** Call `navigator.storage.persist()` once during onboarding; store the result. *(Called on
   every open of the shell and again on the Back up screen. It is idempotent and returns the
-  standing answer, so there is nothing to store — asking is cheaper than remembering. Onboarding is
-  still G.)*
-- **F1.2** Read `navigator.storage.estimate()` for usage and quota. *(Not done.)*
+  standing answer, so there is nothing to store — asking is cheaper than remembering, and a stored
+  "granted" from three months ago would be the app asserting something it has not checked.
+  Onboarding is still G.)*
+- **F1.2** Read `navigator.storage.estimate()` for usage and quota. *(Done, in `readStorage`. The
+  percentage is deliberately not shown: a log is a few hundred kilobytes against a quota in the
+  gigabytes, so it rounds to zero, and "0%" communicates only that the number was not worth
+  printing. The bytes are worth printing — they say the log is small, which is the honest
+  reassurance, because it means nothing about this app is what puts it at risk of eviction.)*
 - **F1.3** Show a plain storage-status block: stored on this device, installed yes/no, persistent
-  granted/best-effort, usage, last backup. Do not hide it. *(Partly: the Back up screen shows
-  persistent/best-effort, last backup and how many sessions would be lost, and says plainly that a
-  browser can throw the log away. Installed and usage are still missing.)*
+  granted/best-effort, usage, last backup. Do not hide it. *(Done — five lines on the Back up
+  screen, all five of them able to read "unknown". Every one of those browser APIs is optional and
+  a block that invented a zero would be worse than one that admits what it does not know.)*
 
 ## F2 — Install nudge
-- **F2.1** Detect iOS Safari not running standalone.
+*The screens are `src/screens/Install.tsx`; the facts they branch on are `src/platform.ts`, which
+takes them as values so the four cases can be tested without four browsers.*
+
+- **F2.1** Detect iOS Safari not running standalone. *(Done, and deliberately widened to **iOS in
+  any browser**. Every browser on iOS is WebKit underneath and every one is subject to the same
+  seven-day cap, so singling Safari out would tell a Chrome-on-iPhone user their log was safe when
+  it is not. The detection has to sniff the user-agent — there is no feature test for "this
+  browser's storage evaporates in seven days" — and it includes the iPadOS-reports-as-Mac
+  workaround, which is ugly and is the only one there is. Nothing about the app's behaviour
+  branches on it; only the words on one screen.)*
 - **F2.2** Show a real screen with Share → Add to Home Screen instructions and the honest reason:
   Safari deletes a site's data after seven days without a visit; a home-screen app is exempt.
-- **F2.3** On Android, use the `beforeinstallprompt` event.
+  *(Done. The reason comes before the instructions, stated outright, because somebody who does not
+  know why they are being asked will not do it. The Share glyph is inline SVG rather than Apple's
+  private-use character, which renders as a blank box everywhere else — including the desktop
+  browser somebody might read this on.)*
+- **F2.3** On Android, use the `beforeinstallprompt` event. *(Done. The event fires once, early,
+  before React exists, and cannot be asked for again — so it is caught at module load in
+  `src/install.ts` and held. That is the app's one piece of module-level mutable state and the
+  header says why it cannot be anything else.)*
 
 ## F3 — Backup nudge
 - **F3.1** Track `lastExportedAt` in settings. *(Done. Written only after the JSON backup has been
   handed over — a cancelled share sheet does not count, and a CSV never does, because a spreadsheet
   cannot restore anything.)*
 - **F3.2** After ~14 days or ~10 sessions without a backup, interrupt once with a dismissible
-  full-screen step: one sentence, one large Download button.
-- **F3.3** This is the highest-leverage item in the whole data story. Do not skip it.
+  full-screen step: one sentence, one large Download button. *(Done. `backupStatus` in
+  `src/durability.ts` is the rule and it runs on two clocks, which is the whole of it. What the
+  screen **says** is measured from the last backup, because that is the true answer to "how much
+  would I lose" and dismissing a nudge does not make the log any safer. What **triggers** is
+  measured from the last backup or the last interruption, whichever is later — so dismissing buys
+  another fortnight or another ten sessions and then the app asks again. That needed a new
+  settings field, `lastNudgedAt`; without it "interrupt once" means once per open, which is the
+  behaviour that teaches somebody to dismiss a screen without reading it.*
+
+  *Three things it does not do. It does not scold — §5 says guilt is friction and friction is the
+  enemy, so the sentence states a fact about a number of sessions and stops. It does not block:
+  "Not now" is the same size as the other button. And it never appears over a session — an open
+  session outranks it, the same way it outranks the rotation, because somebody mid-workout is
+  standing over a dumbbell.)*
+- **F3.3** This is the highest-leverage item in the whole data story. Do not skip it. *(Not
+  skipped. §9.3 is right about why: an export button is level zero of the ladder and is
+  insufficient by itself **because nobody ever presses it**. Everything else in Part F makes the
+  log a little safer where it already is; this is the only thing that gets a second copy off the
+  device.)*
 
 ## F4 — Import
-- **F4.1** File picker → validate → confirm → replace → `rebuildState()`. *(Still to do, and it is
-  the other half of the backup that now exists: the file can be written but not yet read back in.)*
-- **F4.2** The confirm must state plainly that import **replaces** the log on this device.
-- **F4.3** Place Import beside Download, visually secondary.
+- **F4.1** File picker → validate → confirm → replace → `rebuildState()`. *(Done, and the validate
+  genuinely comes second. `previewJson` parses, migrates and touches no storage, so a file that is
+  not a backup is refused while the log is still exactly where it was — being told the file was
+  unreadable *after* the restore had replaced everything would be the worst screen in the app, and
+  the person running it has usually lost their data once already. `importJson` then parses the
+  text again rather than reusing that document; a few hundred kilobytes of redundant work at the
+  one moment nobody is in a hurry, and it keeps the restore's own parse-check-replace-rebuild
+  order intact.)*
+- **F4.2** The confirm must state plainly that import **replaces** the log on this device. *(Done,
+  and it says it with numbers: "on this device 3 sessions / in the file 11 sessions, 66 sets /
+  taken 2026-08-24". That is a decision somebody can make; "replace everything?" is a dice roll.
+  The line above the button names the shortfall when the file is the smaller of the two, which is
+  the dangerous case — restoring last month's backup over a log that has moved on — and says
+  nothing alarming when it is the larger, which is the ordinary new-phone case.)*
+- **F4.3** Place Import beside Download, visually secondary. *(Done — below both downloads, in the
+  quiet button style, behind a hidden file input.)*
+
+*One thing F4 forced that is worth recording: the import validator now tolerates a **missing**
+field where the app has grown one since the file was written (`readOptionalString`). A backup
+taken last year must still restore next year, and refusing it because this year's app added
+`lastNudgedAt` would break the one promise the export format makes. Tolerating absence is not
+tolerating nonsense — a field of the wrong type is still refused.*
 
 ### Exit criteria — Part F
 - [ ] Storage status renders truthfully on iOS Safari, installed iOS, and Android Chrome.
-- [ ] The backup nudge fires at the right time and stops after a download.
-- [ ] A file exported on one device imports cleanly on another.
+      *Checked in headless Chromium with an iPhone user-agent — the block reads "no — in a Safari
+      tab", the seven-day warning appears and the install screen draws the Share flow. **Not
+      checked on real hardware**, and it cannot be from here: `navigator.standalone`, a genuine
+      home-screen launch and Android's `beforeinstallprompt` are all things only a real device
+      does. This is the project owner's to confirm, like Part D's fifth.*
+- [x] The backup nudge fires at the right time and stops after a download. *Twelve tests over the
+      rule, and driven end to end in a browser: eleven sessions raise it, "Not now" writes
+      `lastNudgedAt` and the next open is silent, and a completed download satisfies it.*
+- [x] A file exported on one device imports cleanly on another. *The round-trip test has covered
+      the bytes since C4.4; what F4 adds is the same trip through the actual picker — export, wipe
+      the log down to three sessions, pick the file, read the confirm, cancel, pick again, replace.
+      A file that is not a backup is refused before the confirm is ever drawn.*
 
 ---
 

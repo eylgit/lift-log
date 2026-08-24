@@ -204,6 +204,49 @@ export async function exportCsv(repo: Repo): Promise<string> {
 
 /* ------------------------------------------------------------- importing */
 
+/**
+ * What is in a file, before anything has been written (F4.1).
+ *
+ * The plan's order is picker → validate → confirm → replace, and this is the
+ * validate. It parses and migrates and touches no storage, so a file that is
+ * not a backup — or is a backup from a newer app — is refused while the
+ * athlete's log is still exactly where it was. Being told "this is not a Lift
+ * Log backup" *after* the restore has replaced everything would be the worst
+ * screen in the app.
+ *
+ * It also gives the confirm something true to say. "Replace 214 sessions with
+ * the 198 in a file from 3 August" is a decision; "replace everything?" is a
+ * dice roll.
+ */
+export type ImportPreview = {
+  /** When the file was taken. */
+  readonly exportedAt: Instant;
+  readonly schemaVersion: number;
+  readonly exercises: number;
+  readonly sessions: number;
+  readonly sets: number;
+};
+
+/**
+ * Read a file and say what is in it, writing nothing (F4.1).
+ *
+ * `importJson` parses again rather than taking the document this produced. That
+ * is a few hundred kilobytes of redundant work at the one moment nobody is in a
+ * hurry, and it buys something worth more: `importJson` keeps its own
+ * "parse, check, replace, rebuild" order and cannot be handed a document that
+ * was validated by an older copy of this code, or edited in between.
+ */
+export function previewJson(json: string): ImportPreview {
+  const document = migrate(parseDocument(json));
+  return {
+    exportedAt: document.exportedAt,
+    schemaVersion: document.schemaVersion,
+    exercises: document.exercises.length,
+    sessions: document.sessions.length,
+    sets: document.sets.length,
+  };
+}
+
 /** What was restored, for the screen that asked for it (F4). */
 export type ImportResult = {
   /** When the file was taken — the thing to show, since it is what was lost. */
@@ -337,6 +380,24 @@ function readNullableString(row: Row, field: string, where: string): string | nu
   return value;
 }
 
+/**
+ * A string, null, or absent — a field added to the app after this file was
+ * written.
+ *
+ * The distinction from `readNullableString` is the whole point: a backup taken
+ * last year does not have this year's fields, and refusing it would break the
+ * one promise the export format makes. An absent field is not a malformed file,
+ * it is an older one, and the default is what a fresh install would have had.
+ *
+ * This is deliberately *only* for fields whose absence has an obvious answer.
+ * Anything load-bearing gets a step in `migrate` instead, where the conversion
+ * can be written down and read.
+ */
+function readOptionalString(row: Row, field: string, where: string): string | null {
+  if (!(field in row) || row[field] === undefined) return null;
+  return readNullableString(row, field, where);
+}
+
 function readNumber(row: Row, field: string, where: string, min = -Infinity): number {
   const value = row[field];
   // `Number.isFinite` and not `typeof === "number"`: JSON has no NaN or
@@ -444,6 +505,8 @@ function readSettings(value: unknown): Settings {
     restTargetS: readNumber(row, "restTargetS", "settings", 0),
     stallThreshold: readCount(row, "stallThreshold", "settings"),
     lastExportedAt: readNullableString(row, "lastExportedAt", "settings"),
+    // Added in F3, so a backup taken before it simply has no such field.
+    lastNudgedAt: readOptionalString(row, "lastNudgedAt", "settings"),
     schemaVersion: readCount(row, "schemaVersion", "settings"),
   };
 }

@@ -23,7 +23,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Format } from "./backup";
 import { saveFile } from "./backup";
 import { trainingDay } from "./clock";
-import { exportCsv, exportJson, openRepo, rebuildState } from "./db";
+import type { ImportResult } from "./db";
+import { exportCsv, exportJson, importJson, openRepo, previewJson, rebuildState } from "./db";
+import type { BackupStatus } from "./durability";
+import { backupStatus, readStorage } from "./durability";
+import type { InstallState } from "./platform";
+import { installState, readPlatform } from "./platform";
 import type { Exercise, ExerciseId, OutcomeResult, SessionId, Side } from "./engine";
 import type { History, SessionDetail } from "./history";
 import { loadDetail, loadHistory } from "./history";
@@ -42,6 +47,7 @@ import {
 } from "./session";
 import type { BackfillSetup } from "./screens/Backfill";
 import type { BackupState } from "./screens/Backup";
+import { heldPrompt, promptToInstall } from "./install";
 import type { Today } from "./today";
 import { loadToday } from "./today";
 
@@ -84,7 +90,13 @@ export type Screen =
   | { readonly name: "history"; readonly history: History }
   | { readonly name: "detail"; readonly detail: SessionDetail }
   | { readonly name: "progress"; readonly progress: Progress }
-  | { readonly name: "backfill"; readonly setup: BackfillSetup };
+  | { readonly name: "backfill"; readonly setup: BackfillSetup }
+  | { readonly name: "install"; readonly state: InstallState }
+  | {
+      readonly name: "nudge";
+      readonly status: BackupStatus;
+      readonly busy: boolean;
+    };
 
 /** Today's session as the athlete has adjusted it. */
 export type Plan = {
@@ -148,6 +160,27 @@ export type Actions = {
   readonly openBackup: () => void;
   /** Write the log to a file and, if it got there, record that it happened. */
   readonly download: (format: Format) => void;
+
+  /* -------------------------------------------------------- restore (F4) */
+
+  /** Read a picked file and check it, writing nothing (F4.1). */
+  readonly pickImport: (file: File) => void;
+  /** Confirmed: replace the log with the file that was checked (F4.1). */
+  readonly runImport: () => void;
+  /** Changed their mind at the confirm. */
+  readonly cancelImport: () => void;
+
+  /* -------------------------------------------------------- install (F2) */
+
+  /** Open the Add to Home Screen instructions. */
+  readonly openInstall: () => void;
+  /** Fire the browser's own install prompt, where there is one (F2.3). */
+  readonly install: () => void;
+
+  /* ---------------------------------------------------------- nudge (F3) */
+
+  /** Dismiss the backup nudge, and do not ask again for a while (F3.2). */
+  readonly dismissNudge: () => void;
 };
 
 /** The plan a freshly loaded card starts from: exactly what was prescribed. */
@@ -195,17 +228,25 @@ export function useApp(): readonly [Screen, Actions] {
       const repo = await openRepo();
       // An open session beats the rotation. See the header.
       const resumed = await resumeSession(repo);
-      if (resumed === null) {
-        const today = await loadToday(repo);
-        return { name: "today", today, plan: planFrom(today) };
+      if (resumed !== null) {
+        const settings = await repo.getSettings();
+        return {
+          name: "session",
+          view: resumed,
+          restTargetS: settings.restTargetS,
+          sideOverride: null,
+        };
       }
-      const settings = await repo.getSettings();
-      return {
-        name: "session",
-        view: resumed,
-        restTargetS: settings.restTargetS,
-        sideOverride: null,
-      };
+
+      // And an open session beats the nudge, for the same reason and more so:
+      // somebody mid-workout is standing over a dumbbell, and a screen about
+      // file backups is the least welcome thing in the world (F3.2).
+      const [settings, sessions] = await Promise.all([repo.getSettings(), repo.listSessions()]);
+      const status = backupStatus(sessions, settings.lastExportedAt, settings.lastNudgedAt);
+      if (status.due) return { name: "nudge", status, busy: false };
+
+      const today = await loadToday(repo);
+      return { name: "today", today, plan: planFrom(today) };
     });
 
     return () => {
@@ -464,12 +505,16 @@ export function useApp(): readonly [Screen, Actions] {
       state: {
         lastExportedAt: settings.lastExportedAt,
         sessions: sessions.length,
-        // `persist()` is idempotent and returns the standing answer, so asking
-        // again here costs nothing and is the only way to be current (F1.1).
-        persisted: (await navigator.storage?.persist?.().catch(() => false)) ?? null,
+        // Read afresh every time this screen opens (F1.2, F1.3). `persist()` is
+        // idempotent and returns the standing answer, and an installed app can
+        // become one between two visits — a status block is only worth having
+        // if it is current.
+        storage: await readStorage(heldPrompt()),
         result: null,
         error: null,
         busy: false,
+        pending: null,
+        restored: null,
         ...over,
       },
     };
@@ -477,11 +522,28 @@ export function useApp(): readonly [Screen, Actions] {
 
   const openBackup = useCallback(() => void run(() => readBackup()), [run, readBackup]);
 
+  /**
+   * Write the log to a file (F1, F3.2).
+   *
+   * Reachable from two screens, and it lands on the Back up screen from both.
+   * From the nudge that is a deliberate change of destination rather than a
+   * shortcut back to Today: the sentence under the button — *move it somewhere
+   * that is not this phone* — is the half of the instruction that makes a
+   * download into a backup, and dropping somebody straight back onto the card
+   * would skip it.
+   */
   const download = useCallback(
     (format: Format) => {
       const here = current.current;
-      if (here.name !== "backup" || here.state.busy) return;
-      setScreen({ ...here, state: { ...here.state, busy: true, error: null, result: null } });
+      if (here.name === "nudge") {
+        if (here.busy) return;
+        setScreen({ ...here, busy: true });
+      } else if (here.name === "backup") {
+        if (here.state.busy) return;
+        setScreen({ ...here, state: { ...here.state, busy: true, error: null, result: null } });
+      } else {
+        return;
+      }
 
       void (async () => {
         try {
@@ -514,6 +576,124 @@ export function useApp(): readonly [Screen, Actions] {
     },
     [readBackup],
   );
+
+  /* ---------------------------------------------------------- restore (F4) */
+
+  /**
+   * Read a picked file and check it, writing nothing (F4.1).
+   *
+   * The plan's order is picker → validate → confirm → replace, and the validate
+   * genuinely comes second. Somebody restoring a backup has usually lost their
+   * data once already; being told the file was unreadable *after* it had
+   * replaced what was left would be the second time, and this app's fault
+   * rather than a browser's.
+   *
+   * A failure lands on the backup screen with the parser's own sentence, which
+   * names the field that was wrong. That is deliberately more detail than an
+   * app would normally show: the person reading it may be hand-repairing a file
+   * in a text editor, and "this file is not a usable Lift Log backup" without a
+   * reason gives them nothing to work with.
+   */
+  const pickImport = useCallback(
+    (file: File) => {
+      void (async () => {
+        try {
+          const json = await file.text();
+          const preview = previewJson(json);
+          if (live.current) setScreen(await readBackup({ pending: { preview, json } }));
+        } catch (error: unknown) {
+          if (!live.current) return;
+          setScreen(
+            await readBackup({
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          );
+        }
+      })();
+    },
+    [readBackup],
+  );
+
+  /**
+   * Confirmed: replace the log with the file (F4.1, F4.2).
+   *
+   * `importJson` parses the text again rather than reusing what `previewJson`
+   * produced — see its header. It replaces every table and rebuilds the cache
+   * from the restored log, which is the same two steps a delete and a backfill
+   * take, for the same reason (INV-2, C3.1).
+   */
+  const runImport = useCallback(() => {
+    const here = current.current;
+    if (here.name !== "backup" || here.state.pending === null || here.state.busy) return;
+    const { json } = here.state.pending;
+    setScreen({ ...here, state: { ...here.state, busy: true } });
+
+    void (async () => {
+      try {
+        const repo = await openRepo();
+        const restored: ImportResult = await importJson(repo, json);
+        if (live.current) setScreen(await readBackup({ restored }));
+      } catch (error: unknown) {
+        if (!live.current) return;
+        setScreen(
+          await readBackup({
+            error: `The restore failed and the log was left alone: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          }),
+        );
+      }
+    })();
+  }, [readBackup]);
+
+  const cancelImport = useCallback(() => void run(() => readBackup()), [run, readBackup]);
+
+  /* ---------------------------------------------------------- install (F2) */
+
+  const openInstall = useCallback(() => {
+    setScreen({ name: "install", state: installState(readPlatform(heldPrompt())) });
+  }, []);
+
+  /**
+   * Fire the browser's install prompt (F2.3).
+   *
+   * The screen is re-read afterwards whatever the athlete chose, because either
+   * answer changes what is true on it: accepting makes the app installed, and
+   * declining consumes the event, so the button that offered it should stop
+   * being there.
+   */
+  const install = useCallback(() => {
+    void (async () => {
+      await promptToInstall();
+      if (!live.current) return;
+      const here = current.current;
+      if (here.name === "install") {
+        setScreen({ name: "install", state: installState(readPlatform(heldPrompt())) });
+      } else if (here.name === "backup") {
+        setScreen(await readBackup());
+      }
+    })();
+  }, [readBackup]);
+
+  /* ------------------------------------------------------------ nudge (F3) */
+
+  /**
+   * Dismiss the nudge, and write down that it happened (F3.2).
+   *
+   * The write is the whole of "interrupt *once*". Without it the nudge fires on
+   * every open until a backup happens, which is the behaviour that teaches
+   * somebody to dismiss a screen without reading it — and a nudge that has been
+   * trained out is worse than none, because it is the same interruption with
+   * none of the benefit.
+   */
+  const dismissNudge = useCallback(() => {
+    void run(async () => {
+      const repo = await openRepo();
+      await repo.saveSettings({ lastNudgedAt: new Date().toISOString() });
+      const today = await loadToday(repo);
+      return { name: "today", today, plan: planFrom(today) };
+    });
+  }, [run]);
 
   const finish = useCallback(() => close("complete"), [close]);
   const abandon = useCallback(() => close("abandoned"), [close]);
@@ -641,6 +821,12 @@ export function useApp(): readonly [Screen, Actions] {
       saveBackfill,
       openBackup,
       download,
+      pickImport,
+      runImport,
+      cancelImport,
+      openInstall,
+      install,
+      dismissNudge,
     },
   ] as const;
 }

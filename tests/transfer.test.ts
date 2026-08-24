@@ -20,6 +20,7 @@ import {
   exportCsv,
   exportJson,
   importJson,
+  previewJson,
 } from "../src/db/transfer";
 import type { EngineState, Exercise, Session, SetLog } from "../src/engine";
 
@@ -469,5 +470,93 @@ describe("refusing a file it cannot trust", () => {
     // The athlete running an import has already lost their data once. Every
     // check happens before the first write for exactly this reason.
     expect(await exportJson(repo, AT)).toBe(before);
+  });
+});
+
+/* ------------------------------------------------- looking before leaping (F4.1) */
+
+describe("checking a file without writing anything", () => {
+  it("says what is in a good file", async () => {
+    const json = await exportJson(repo, AT);
+
+    expect(previewJson(json)).toEqual({
+      exportedAt: AT,
+      schemaVersion: SCHEMA_VERSION,
+      exercises: 2,
+      sessions: 2,
+      sets: 4,
+    });
+  });
+
+  it("refuses a bad file with the same words the import would use", async () => {
+    // The confirm should never be reached by a file the restore would then
+    // reject: the athlete would have agreed to replace their log and then been
+    // told the file was unreadable, which is the worst screen in the app.
+    const json = await tampered((doc) => {
+      (doc["sessions"] as Record<string, unknown>[])[1]!["actualKg"] = "twenty";
+    });
+
+    expect(() => previewJson(json)).toThrow(/sessions\[1\]\.actualKg/);
+    await expect(importJson(repo, json)).rejects.toThrow(/sessions\[1\]\.actualKg/);
+  });
+
+  it("refuses a newer app's backup before the confirm, not after", async () => {
+    const json = await tampered((doc) => {
+      doc["schemaVersion"] = SCHEMA_VERSION + 1;
+    });
+
+    expect(() => previewJson(json)).toThrow(/newer version/);
+  });
+
+  it("touches the database not at all", async () => {
+    const before = await exportJson(repo, AT);
+    const bad = await tampered((doc) => {
+      doc["sets"] = "not a list";
+    });
+
+    expect(() => previewJson(bad)).toThrow();
+    previewJson(await exportJson(repo, AT));
+
+    expect(await exportJson(repo, AT)).toBe(before);
+  });
+});
+
+/* ------------------------------------------- a file older than a field (F3, F4) */
+
+describe("a backup written before a field existed", () => {
+  /** An export with `settings.lastNudgedAt` removed, as a pre-F3 file would be. */
+  async function withoutNudgeField(): Promise<string> {
+    return tampered((doc) => {
+      delete (doc["settings"] as Record<string, unknown>)["lastNudgedAt"];
+    });
+  }
+
+  it("checks out, because an absent field is an older file and not a broken one", async () => {
+    const json = await withoutNudgeField();
+
+    expect(json).not.toContain("lastNudgedAt");
+    expect(() => previewJson(json)).not.toThrow();
+  });
+
+  it("restores with the default a fresh install would have had", async () => {
+    // This is the promise the export format makes and the one worth keeping:
+    // a backup taken last year still restores next year. Refusing it because
+    // this year's app grew a field would break it at the one moment it counts.
+    const wiped = await openDexieRepo(`lift-log-transfer-${(dbCount += 1)}`);
+
+    await importJson(wiped, await withoutNudgeField());
+
+    const settings = await wiped.getSettings();
+    expect(settings.lastNudgedAt).toBeNull();
+    expect(settings.units).toBe("kg");
+  });
+
+  it("still refuses a field of the wrong type, absent or not", async () => {
+    // Tolerating absence is not tolerating nonsense.
+    const json = await tampered((doc) => {
+      (doc["settings"] as Record<string, unknown>)["lastNudgedAt"] = 7;
+    });
+
+    expect(() => previewJson(json)).toThrow(/settings\.lastNudgedAt/);
   });
 });

@@ -30,6 +30,15 @@ export type Settings = {
   readonly stallThreshold: number;
   /** ISO instant of the last successful export, or null if never (F3). */
   readonly lastExportedAt: string | null;
+  /**
+   * ISO instant of the last time the backup nudge interrupted, or null (F3.2).
+   *
+   * Stored rather than held in memory because the nudge has to survive being
+   * dismissed and the app being closed. Without it, "interrupt once" would mean
+   * once per open, which is the behaviour that teaches somebody to dismiss a
+   * screen without reading it. See `backupStatus` in `src/durability.ts`.
+   */
+  readonly lastNudgedAt: string | null;
   /** What version of this schema wrote the data. Also goes in the export (C4). */
   readonly schemaVersion: number;
 };
