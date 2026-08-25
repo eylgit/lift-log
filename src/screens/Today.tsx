@@ -157,6 +157,15 @@ export function TodayScreen({
         </div>
       )}
 
+      <div className="kv">
+        <span className="k">SETTINGS</span>
+        <span className="v">
+          <button className="tap" onClick={actions.openSettings}>
+            the step, rest, and your log
+          </button>
+        </span>
+      </div>
+
       <p className="hint">A dotted underline means you can tap it.</p>
 
       <div className="grow" />

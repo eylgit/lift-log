@@ -21,6 +21,7 @@ import { OnboardingScreen } from "./screens/Onboarding";
 import { ProgressScreen } from "./screens/Progress";
 import { SampleBanner } from "./screens/Sample";
 import { SessionScreen } from "./screens/Session";
+import { SettingsScreen } from "./screens/Settings";
 import { SummaryScreen } from "./screens/Summary";
 import { TodayScreen } from "./screens/Today";
 import { useApp } from "./useApp";
@@ -138,6 +139,17 @@ export default function App() {
           state={screen.state}
           onInstall={actions.install}
           onBack={actions.openBackup}
+        />
+      )}
+
+      {screen.name === "settings" && (
+        <SettingsScreen
+          view={screen.view}
+          onStep={actions.setStep}
+          onRest={actions.chooseRest}
+          onBackup={actions.openBackup}
+          onErase={actions.erase}
+          onBack={actions.dismiss}
         />
       )}
 

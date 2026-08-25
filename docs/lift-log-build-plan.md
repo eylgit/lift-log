@@ -914,13 +914,66 @@ knowing nothing. Both end with `rebuildState`, for the reason `restore` states a
 clears the cache and does not refill it, so whoever replaces the log owns rebuilding from it.*
 
 ## G3 — Settings
-- **G3.1** Step size, rest length, units display, export/import, about, reset.
+- **G3.1** Step size, rest length, units display, export/import, about, reset. *(Five of the six
+  are done. **Units display is not built and is the open question at the foot of this section.**)*
+  - *Step size — a stepper in 0.25 kg, so anything is reachable; onboarding's six choices are the
+    fast path, not the limit. **It rebuilds the cache**, and that is required rather than tidy:
+    `applyOutcome` reads the step out of `equipment` every time it folds a session (C3), so the
+    cached `currentKg` was computed with the old one and replay would disagree with it — and INV-2
+    makes replay the truth, so the disagreement would surface later, silently, on the next import.*
+
+    *That sounds alarming and is not, because of the shape of the fold. A clean session sets
+    `currentKg` to **that session's** `actualKg` plus one step, not to a running total of every
+    step ever added. So 1 kg → 2.5 kg moves the next prescription from 41 to 42.5 and leaves the
+    40 that was actually lifted alone; a lift whose last session was short does not move at all,
+    because a stall sets `currentKg` to what was lifted and no step is involved. Seven tests.*
+  - *Rest length — the same `chooseRest` the Today card uses, taught to come back to whichever
+    screen called it rather than always to Today.*
+  - *Export/import — a row that opens the backup screen (F1, F4) rather than a second copy of it.*
+  - *Reset — `resetToDefaults` behind a confirm that names the backup file as the only way back.
+    It lands on onboarding, which is the honest consequence and not a redirect: the database is a
+    fresh install now and `needsOnboarding` is true again.*
 - **G3.2** Resist adding settings. Each one is a decision handed back to the user, which is the
-  thing the app exists to remove.
-- **G3.3** About: credit Scott Chen with a link to onelift.org, plus the health disclaimer.
+  thing the app exists to remove. *(Taken seriously enough to write down what was left out, in the
+  header of `src/screens/Settings.tsx`: no theme (INV-8), no per-exercise increment (B2.1), and no
+  stall threshold. The last is the most tempting and the most wrong — three stalls before a deload
+  is a rule the whole engine is reasoned around (B5.3), and handing it over would turn a method
+  into a preference. `Settings.stallThreshold` still exists in storage and is still written with
+  the engine's constant; nothing reads it as an override.)*
+- **G3.3** About: credit Scott Chen with a link to onelift.org, plus the health disclaimer. *(Done,
+  on a screen somebody actually reaches, which is what §16 asks for. The disclaimer is three lines
+  because a long one is not read and neither version is legal advice.)*
+
+### Units display — deferred, and why it is a question rather than an oversight
+*The plan lists it in one clause; it is the largest single item in Part G and the only one that is
+not obviously right to build.*
+
+*The cost is real. INV-1 says kilograms are stored and converted at display only, and nothing in
+the app converts anything today — every weight is written `${x} kg` inline, at roughly thirty call
+sites across seven screens. Doing it properly means a conversion module, a rounding rule for
+display, `units` threaded through the screens, and — per §6.6 — an **lb-native step**, so an lb
+athlete sets 5 lb rather than the ugly conversion of 2.5 kg. That last part is the tricky half: a
+5 lb step stored as 2.26796 kg has to come back out as clean multiples of five on screen.*
+
+*The case against is §14.7, quoted at the top of G3.2: every setting is a decision handed back, and
+"you are one user, and you'll build for imaginary ones". The project owner trains in kilograms. The
+whole app, the rotation, the simulation and the week that starts on Monday are all European. A
+units toggle is, on the evidence, a feature for somebody who does not exist yet.*
+
+*The case for is that §5 lists units in onboarding, §6.6 lists pounds as an edge case that must be
+handled, and §14.4 says decide it now because retrofitting is miserable — which is exactly the
+argument that keeps `units` in the settings row and the export today, unread by anything.*
+
+*Both readings are defensible and they lead to different work, so this is the project owner's call
+and not the builder's. Until it is made, the settings screen has no units row: a toggle that
+changed nothing on any screen would be worse than its absence.*
 
 ### Exit criteria — Part G
-- [ ] A fresh install reaches the first session in under two minutes.
+- [x] A fresh install reaches the first session in under two minutes. *Measured in a headless
+      browser at a deliberately slow human pace — four seconds of reading on every screen, plus
+      time to find each target: **31 seconds and six taps**, landing inside set one. The six are
+      the step, Next, Next, Finish setup, Start training, Start. Two of them are Next past a
+      question already answered by its default, which is the point of the defaults.*
 - [x] Sample mode is one tap from the landing state, and one tap to leave. *One tap in — the
       switch is on the landing screen, which is the first setup question. **Two taps out**, and
       deliberately: "Start real" raises a confirm before it wipes the database. The criterion said

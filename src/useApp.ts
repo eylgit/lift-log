@@ -57,6 +57,7 @@ import {
 import type { BackfillSetup } from "./screens/Backfill";
 import type { BackupState } from "./screens/Backup";
 import type { OnboardingSetup } from "./screens/Onboarding";
+import type { SettingsView } from "./screens/Settings";
 import type { OnboardingDraft } from "./onboarding";
 import { commitOnboarding, needsOnboarding } from "./onboarding";
 import { sampleSnapshot } from "./sample";
@@ -105,6 +106,7 @@ export type Screen =
   | { readonly name: "progress"; readonly progress: Progress }
   | { readonly name: "backfill"; readonly setup: BackfillSetup }
   | { readonly name: "install"; readonly state: InstallState }
+  | { readonly name: "settings"; readonly view: SettingsView }
   | {
       readonly name: "onboarding";
       readonly setup: OnboardingSetup;
@@ -224,6 +226,15 @@ export type Actions = {
 
   /** Write the answers to the three setup questions and move to install. */
   readonly finishOnboarding: (draft: OnboardingDraft) => void;
+
+  /* -------------------------------------------------------- settings (G3) */
+
+  /** Open the four settings there are. */
+  readonly openSettings: () => void;
+  /** The step, in kilograms. Rebuilds the cache, because replay reads it. */
+  readonly setStep: (stepKg: number) => void;
+  /** Erase the log and the setup, permanently. Asks first (G3.1). */
+  readonly erase: (step: "ask" | "no" | "yes") => void;
 
   /* ----------------------------------------------------- sample data (G2) */
 
@@ -791,6 +802,102 @@ export function useApp(): readonly [Screen, Actions, Chrome] {
     [run],
   );
 
+  /* ---------------------------------------------------------- settings (G3) */
+
+  /** Read the four settings there are (G3.1). */
+  const readSettings = useCallback(async (over: Partial<SettingsView> = {}): Promise<Screen> => {
+    const repo = await openRepo();
+    const [settings, equipment, sessions] = await Promise.all([
+      repo.getSettings(),
+      repo.getEquipment(),
+      repo.listSessions(),
+    ]);
+    return {
+      name: "settings",
+      view: {
+        stepKg: equipment.stepKg,
+        restTargetS: settings.restTargetS,
+        sessions: sessions.length,
+        lastExportedAt: settings.lastExportedAt,
+        erasing: false,
+        busy: false,
+        ...over,
+      },
+    };
+  }, []);
+
+  const openSettings = useCallback(() => void run(() => readSettings()), [run, readSettings]);
+
+  /**
+   * Change the step, and rebuild the cache (G3.1).
+   *
+   * The rebuild is required rather than tidy: `applyOutcome` reads the step out
+   * of `equipment` every time it folds a session, so the cached `currentKg` was
+   * computed with the old one and replay would disagree with it (INV-2, C3).
+   *
+   * What that recomputation actually does is smaller than it sounds, and worth
+   * stating because the alternative reading is alarming. `currentKg` after a
+   * clean session is *that session's* `actualKg` plus a step — not a total of
+   * every step ever added — so changing 1 kg to 2.5 kg moves the next
+   * prescription from 41 to 42.5. It does not rewrite the history that produced
+   * the 40.
+   */
+  const setStep = useCallback(
+    (stepKg: number) => {
+      const here = current.current;
+      if (here.name !== "settings" || here.view.busy) return;
+      void run(async () => {
+        const repo = await openRepo();
+        await repo.saveEquipment({ stepKg });
+        await rebuildState(repo);
+        return readSettings();
+      });
+    },
+    [run, readSettings],
+  );
+
+  /**
+   * Erase everything (G3.1).
+   *
+   * Three steps for the same reason `leaveSample` has three: this is
+   * unrecoverable, and the difference from sample mode is that here it destroys
+   * something the athlete actually cares about. The confirm says so in those
+   * words and names the backup file as the only way back.
+   *
+   * It lands on onboarding, which is not a redirect so much as the honest
+   * consequence: the database is a fresh install now, and `needsOnboarding` is
+   * true again.
+   */
+  const erase = useCallback(
+    (step: "ask" | "no" | "yes") => {
+      const here = current.current;
+      if (here.name !== "settings") return;
+      if (step !== "yes") {
+        setScreen({ ...here, view: { ...here.view, erasing: step === "ask" } });
+        return;
+      }
+      if (here.view.busy) return;
+      setScreen({ ...here, view: { ...here.view, busy: true } });
+
+      void run(async () => {
+        const repo = await openRepo();
+        await resetToDefaults(repo);
+        if (live.current) setChrome({ sample: false, leaving: false });
+        const [rotation, equipment] = await Promise.all([
+          repo.listExercises(),
+          repo.getEquipment(),
+        ]);
+        return {
+          name: "onboarding",
+          setup: { rotation, stepKg: equipment.stepKg },
+          saved: false,
+          busy: false,
+        };
+      });
+    },
+    [run],
+  );
+
   /* ------------------------------------------------------- sample data (G2) */
 
   /**
@@ -954,17 +1061,27 @@ export function useApp(): readonly [Screen, Actions, Chrome] {
     });
   }, [run, toToday]);
 
+  /**
+   * How long to rest, from either screen that offers it.
+   *
+   * Rest is tappable on the Today card (D5.6) and again in settings (G3.1), and
+   * both go through here because both do the same write. What differs is where
+   * they come back to: the card reloads itself keeping the plan the athlete had
+   * dialled in, and settings re-reads settings. Sending both to Today would
+   * throw somebody out of the screen they were adjusting.
+   */
   const chooseRest = useCallback(
     (seconds: number) => {
       void run(async () => {
         const here = current.current;
-        if (here.name !== "today") return here;
+        if (here.name !== "today" && here.name !== "settings") return here;
         const repo = await openRepo();
         await repo.saveSettings({ restTargetS: seconds });
+        if (here.name === "settings") return readSettings();
         return toToday(here.today.prescription.exercise.id, here.plan);
       });
     },
-    [run, toToday],
+    [run, toToday, readSettings],
   );
 
   const flipSide = useCallback(() => {
@@ -1006,6 +1123,9 @@ export function useApp(): readonly [Screen, Actions, Chrome] {
       openInstall,
       install,
       finishOnboarding,
+      openSettings,
+      setStep,
+      erase,
       trySample,
       leaveSample,
       dismissNudge,
