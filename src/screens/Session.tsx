@@ -24,16 +24,20 @@ import type { Actions } from "../useApp";
 import { asClock, useRest } from "../useRest";
 import { useWakeLock } from "../useWakeLock";
 import type { SessionView } from "../session";
+import type { Units } from "../units";
+import { weight } from "../units";
 
 export function SessionScreen({
   view,
   restTargetS,
   sideOverride,
+  units,
   actions,
 }: {
   view: SessionView;
   restTargetS: number;
   sideOverride: Side | null;
+  units: Units;
   actions: Actions;
 }) {
   const [missAt, setMissAt] = useState<number | null>(null);
@@ -113,7 +117,7 @@ export function SessionScreen({
               step={WEIGHT_NUDGE_KG}
               min={WEIGHT_NUDGE_KG}
               label="the weight on the dumbbell"
-              format={(kg) => `${kg} kg`}
+              format={(kg) => weight(kg, units)}
             />
             {step.isWeakSide && side === view.exercise.weakSide && (
               <span className="tag">weak side</span>

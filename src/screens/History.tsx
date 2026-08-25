@@ -19,6 +19,8 @@ import { Fragment } from "react";
 
 import type { DayCell, DayOutcome, HeatMap, SessionRow } from "../history";
 import type { SessionId, TrainingDay } from "../engine";
+import type { Units } from "../units";
+import { weight } from "../units";
 
 /** Monday first, matching `weekdayIndex`. Initials, because seven must fit. */
 export const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"] as const;
@@ -31,12 +33,14 @@ const MONTHS = [
 export function HistoryScreen({
   heat,
   log,
+  units,
   onOpen,
   onAdd,
   onBack,
 }: {
   heat: HeatMap;
   log: readonly SessionRow[];
+  units: Units;
   onOpen: (id: SessionId) => void;
   onAdd: () => void;
   onBack: () => void;
@@ -109,7 +113,7 @@ export function HistoryScreen({
                   <button className="log-row" onClick={() => onOpen(row.id)}>
                     <span className="log-when mono">{shortDay(row.trainingDay)}</span>
                     <span className="log-lift">{row.exercise}</span>
-                    <span className="log-kg mono">{row.weightKg} kg</span>
+                    <span className="log-kg mono">{weight(row.weightKg, units)}</span>
                     <span className={`cal-cell ${MARK[row.outcome]}`} aria-hidden="true" />
                     <span className="log-mark mono">{result(row)}</span>
                   </button>

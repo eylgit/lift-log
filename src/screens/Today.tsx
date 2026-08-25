@@ -13,17 +13,22 @@ import type { ExerciseId, Side } from "../engine";
 import type { InstallState } from "../platform";
 import type { Actions, Plan } from "../useApp";
 import type { LastResult, Today, WeightChange } from "../today";
+import type { Units } from "../units";
+import { signedWeight, weight } from "../units";
 
 export function TodayScreen({
   today,
   plan,
   install,
+  units,
   actions,
 }: {
   today: Today;
   plan: Plan;
   /** How the app is running, for the install row (F2). */
   install: InstallState;
+  /** How to spell a weight. Kilograms are what is stored either way (INV-1). */
+  units: Units;
   actions: Actions;
 }) {
   const { prescription: rx, dayIndex, rotationLength, last, change } = today;
@@ -69,13 +74,13 @@ export function TodayScreen({
           step={stepKg}
           min={stepKg}
           label="today's weight"
-          format={(kg) => `${kg} kg`}
+          format={(kg) => weight(kg, units)}
         />
       </div>
       <p className="change">
         {chosenWeight
-          ? `you chose this — the engine asked for ${rx.weightKg} kg`
-          : changeLine(change, last)}
+          ? `you chose this — the engine asked for ${weight(rx.weightKg, units)}`
+          : changeLine(change, last, units)}
       </p>
       <div className="scheme">
         <TapNumber
@@ -114,7 +119,7 @@ export function TodayScreen({
       </div>
       <div className="kv">
         <span className="k">LAST TIME</span>
-        <span className="v">{lastLine(last)}</span>
+        <span className="v">{lastLine(last, units)}</span>
       </div>
       <div className="kv">
         <span className="k">TRAINING DAY</span>
@@ -132,7 +137,7 @@ export function TodayScreen({
         <span className="k">PROGRESS</span>
         <span className="v">
           <button className="tap" onClick={() => actions.openProgress()}>
-            {progressLine(rx.weightKg, rx.exercise.startKg)}
+            {progressLine(rx.weightKg, rx.exercise.startKg, units)}
           </button>
         </span>
       </div>
@@ -206,9 +211,9 @@ export function historyLine(sessions: number): string {
  * naming it either would be guessing at which (§5, and `drops` in
  * `src/progress.ts`).
  */
-export function progressLine(weightKg: number, startKg: number): string {
+export function progressLine(weightKg: number, startKg: number, units: Units): string {
   const gain = Math.round((weightKg - startKg) * 1000) / 1000;
-  return gain > 0 ? `+${gain} kg since the start` : "see the chart";
+  return gain > 0 ? `${signedWeight(gain, units)} since the start` : "see the chart";
 }
 
 /**
@@ -223,7 +228,11 @@ export function progressLine(weightKg: number, startKg: number): string {
  * it cannot read — and a weight can also come down because the athlete typed it.
  * "Back off and climb again" is true either way.
  */
-export function changeLine(change: WeightChange, last: LastResult | null): string {
+export function changeLine(
+  change: WeightChange,
+  last: LastResult | null,
+  units: Units,
+): string {
   if (change.kind === "first") {
     return "your start weight — lighter than feels right is the right amount";
   }
@@ -232,10 +241,10 @@ export function changeLine(change: WeightChange, last: LastResult | null): strin
     change.kind === "same"
       ? "same again"
       : change.kind === "down"
-        ? `down from ${change.fromKg} kg`
+        ? `down from ${weight(change.fromKg, units)}`
         : change.oneStep
-          ? `one step up from ${change.fromKg} kg`
-          : `up ${change.byKg} kg from ${change.fromKg} kg`;
+          ? `one step up from ${weight(change.fromKg, units)}`
+          : `up ${weight(change.byKg, units)} from ${weight(change.fromKg, units)}`;
 
   return `${direction}${because(change, last)}`;
 }
@@ -266,11 +275,11 @@ function because(change: WeightChange, last: LastResult | null): string {
  * rather than a calendar — skipping a week costs nothing and the card must not
  * imply otherwise (INV-6).
  */
-export function lastLine(last: LastResult | null): string {
+export function lastLine(last: LastResult | null, units: Units): string {
   if (last === null) return "never trained";
   const what =
     last.outcome === "short"
       ? `${last.repsShort} ${last.repsShort === 1 ? "rep" : "reps"} short`
       : last.outcome;
-  return `${last.trainingDay} · ${last.weightKg} kg · ${what}`;
+  return `${last.trainingDay} · ${weight(last.weightKg, units)} · ${what}`;
 }

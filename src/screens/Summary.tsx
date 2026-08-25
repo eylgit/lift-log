@@ -16,14 +16,18 @@
 import type { OutcomeResult } from "../engine";
 import { isClean } from "../engine";
 import type { SessionView } from "../session";
+import type { Units } from "../units";
+import { unitLabel, weight, weightValue } from "../units";
 
 export function SummaryScreen({
   view,
   outcome,
+  units,
   onDismiss,
 }: {
   view: SessionView;
   outcome: OutcomeResult;
+  units: Units;
   onDismiss: () => void;
 }) {
   const { session, exercise, sets } = view;
@@ -38,21 +42,22 @@ export function SummaryScreen({
       <span className="eyebrow">{exercise.name}</span>
 
       <h1 className="lift">{headline(everySide, clean)}</h1>
-      <p className="change">{recap(view, everySide, clean, shortBy)}</p>
+      <p className="change">{recap(view, everySide, clean, shortBy, units)}</p>
 
       <div className="rule" />
 
       <p className="eyebrow">NEXT TIME</p>
       <div className="load">
-        <span className="kg">{outcome.state.currentKg}</span>
-        <span className="unit">kg</span>
+        <span className="kg">{weightValue(outcome.state.currentKg, units)}</span>
+        <span className="unit">{unitLabel(units)}</span>
       </div>
-      <p className="change">{nextLine(view, outcome)}</p>
+      <p className="change">{nextLine(view, outcome, units)}</p>
 
       {outcome.deload !== null && (
         <p className="notice">
-          You have been stuck at {outcome.deload.fromKg} kg for {outcome.deload.stallCount}{" "}
-          sessions, so the weight has come down to {outcome.deload.toKg} kg.{" "}
+          You have been stuck at {weight(outcome.deload.fromKg, units)} for{" "}
+          {outcome.deload.stallCount} sessions, so the weight has come down to{" "}
+          {weight(outcome.deload.toKg, units)}.{" "}
           {outcome.deload.basis === "history"
             ? "That is a weight you actually lifted six sessions ago."
             : "The log was too short to find a weight to go back to, so it is about 15% off."}{" "}
@@ -82,18 +87,19 @@ function recap(
   everySide: boolean,
   clean: boolean,
   shortBy: number,
+  units: Units,
 ): string {
   const { sets, session, totalSets } = view;
   const done = Math.floor(sets.length / 2);
 
   if (!everySide) {
     return sets.length === 0
-      ? `walked out before the first set, at ${session.actualKg} kg`
-      : `${done} of ${totalSets} sets at ${session.actualKg} kg, then walked out`;
+      ? `walked out before the first set, at ${weight(session.actualKg, units)}`
+      : `${done} of ${totalSets} sets at ${weight(session.actualKg, units)}, then walked out`;
   }
   return clean
-    ? `every rep of ${totalSets} sets at ${session.actualKg} kg`
-    : `${totalSets} sets at ${session.actualKg} kg, ${shortBy} ${shortBy === 1 ? "rep" : "reps"} short`;
+    ? `every rep of ${totalSets} sets at ${weight(session.actualKg, units)}`
+    : `${totalSets} sets at ${weight(session.actualKg, units)}, ${shortBy} ${shortBy === 1 ? "rep" : "reps"} short`;
 }
 
 /**
@@ -105,13 +111,15 @@ function recap(
  * compares against the session the athlete has just finished, which it holds,
  * and Today compares against the last one it can find.
  */
-function nextLine(view: SessionView, outcome: OutcomeResult): string {
+function nextLine(view: SessionView, outcome: OutcomeResult, units: Units): string {
   const from = view.session.actualKg;
   const to = outcome.state.currentKg;
 
-  if (outcome.deload !== null) return `down from ${from} kg after three short sessions`;
-  if (to > from) return `one step up from the ${from} kg you just lifted`;
-  if (to < from) return `down from the ${from} kg you just lifted`;
+  if (outcome.deload !== null) {
+    return `down from ${weight(from, units)} after three short sessions`;
+  }
+  if (to > from) return `one step up from the ${weight(from, units)} you just lifted`;
+  if (to < from) return `down from the ${weight(from, units)} you just lifted`;
   return view.sets.length === 0
     ? "unchanged — the engine learns nothing from a session that did not happen"
     : "the same weight again, until it goes clean";

@@ -20,6 +20,8 @@ import { TapChoice } from "../components/TapValue";
 import type { ChartPoint, ExerciseId } from "../engine";
 import type { Plot, Progress, ProgressStats } from "../progress";
 import { PLOT_GUTTER, plot } from "../progress";
+import type { Units } from "../units";
+import { signedWeight, weight } from "../units";
 
 /**
  * Above this many sessions the dots merge into the line and stop meaning
@@ -29,10 +31,12 @@ const DOTS_BELOW = 40;
 
 export function ProgressScreen({
   progress,
+  units,
   onChoose,
   onBack,
 }: {
   progress: Progress;
+  units: Units;
   onChoose: (id: ExerciseId) => void;
   onBack: () => void;
 }) {
@@ -68,28 +72,30 @@ export function ProgressScreen({
           finish a session of it.
         </p>
       ) : (
-        <Chart plot={drawn} points={points} />
+        <Chart plot={drawn} points={points} units={units} />
       )}
 
       <div className="rule" />
 
       <div className="kv">
         <span className="k">CURRENT</span>
-        <span className="v">{stats.currentKg} kg</span>
+        <span className="v">{weight(stats.currentKg, units)}</span>
       </div>
       <div className="kv">
         <span className="k">BEST</span>
         <span className="v">
-          {stats.bestKg === null ? "—" : `${stats.bestKg} kg · ${stats.bestDay}`}
+          {stats.bestKg === null ? "—" : `${weight(stats.bestKg, units)} · ${stats.bestDay}`}
         </span>
       </div>
       <div className="kv">
         <span className="k">EST. 1RM</span>
-        <span className="v">{stats.best1RM === null ? "—" : `${stats.best1RM} kg`}</span>
+        <span className="v">
+          {stats.best1RM === null ? "—" : weight(stats.best1RM, units)}
+        </span>
       </div>
       <div className="kv">
         <span className="k">GAIN</span>
-        <span className="v">{gain(stats)}</span>
+        <span className="v">{gain(stats, units)}</span>
       </div>
       <div className="kv">
         <span className="k">WENT DOWN</span>
@@ -120,7 +126,15 @@ export function ProgressScreen({
  * chart looks heavier on a small screen than on a large one — the opposite of
  * what a small screen needs.
  */
-function Chart({ plot: p, points }: { plot: Plot; points: readonly ChartPoint[] }) {
+function Chart({
+  plot: p,
+  points,
+  units,
+}: {
+  plot: Plot;
+  points: readonly ChartPoint[];
+  units: Units;
+}) {
   const line = (get: (at: (typeof p.points)[number]) => number) =>
     p.points.map((at) => `${round(at.x)},${round(get(at))}`).join(" ");
 
@@ -133,13 +147,13 @@ function Chart({ plot: p, points }: { plot: Plot; points: readonly ChartPoint[] 
         className="chart"
         viewBox={`0 0 ${p.width} ${p.height}`}
         role="img"
-        aria-label={label(points)}
+        aria-label={label(points, units)}
       >
         <text className="chart-axis" x={PLOT_GUTTER - 9} y={p.ceilingY + 3} textAnchor="end">
-          {p.ceilingKg} kg
+          {weight(p.ceilingKg, units)}
         </text>
         <text className="chart-axis" x={PLOT_GUTTER - 9} y={p.floorY + 3} textAnchor="end">
-          {p.floorKg} kg
+          {weight(p.floorKg, units)}
         </text>
 
         {p.points
@@ -214,14 +228,14 @@ function round(n: number): number {
 }
 
 /** What the chart says, for a reader who cannot see it. */
-export function label(points: readonly ChartPoint[]): string {
+export function label(points: readonly ChartPoint[], units: Units): string {
   if (points.length === 0) return "No sessions yet";
   const first = points[0]!;
   const last = points[points.length - 1]!;
   return (
     `${points.length} ${points.length === 1 ? "session" : "sessions"}, ` +
-    `from ${first.weightKg} kg on ${first.trainingDay} ` +
-    `to ${last.weightKg} kg on ${last.trainingDay}`
+    `from ${weight(first.weightKg, units)} on ${first.trainingDay} ` +
+    `to ${weight(last.weightKg, units)} on ${last.trainingDay}`
   );
 }
 
@@ -244,8 +258,7 @@ export function caption(stats: ProgressStats): string {
  * history, and it is worth saying so plainly instead of printing "0 kg" — the
  * weight is where it started, which is a sentence, not a score.
  */
-export function gain(stats: ProgressStats): string {
+export function gain(stats: ProgressStats, units: Units): string {
   if (stats.gainKg === 0) return "still at the start weight";
-  const sign = stats.gainKg > 0 ? "+" : "−";
-  return `${sign}${Math.abs(stats.gainKg)} kg from ${stats.startKg} kg`;
+  return `${signedWeight(stats.gainKg, units)} from ${weight(stats.startKg, units)}`;
 }

@@ -11,19 +11,24 @@
  * is the exception and it earns it: it is the one value that lives in settings
  * rather than in the log, and somebody looking for it will look here first.
  *
- * What is deliberately absent: a theme (INV-8), a units toggle until the app
- * can actually convert one (INV-1 — see the note in the build plan at G3.1), a
- * per-exercise increment (B2.1), and a stall threshold. The last is the most
- * tempting and the most wrong: three stalls before a deload is a rule the whole
- * engine is reasoned around (B5.3), and handing it over would turn a method into
- * a preference.
+ * What is deliberately absent: a theme (INV-8), a per-exercise increment
+ * (B2.1), and a stall threshold. The last is the most tempting and the most
+ * wrong: three stalls before a deload is a rule the whole engine is reasoned
+ * around (B5.3), and handing it over would turn a method into a preference.
+ *
+ * Units is here and is the one setting that writes nothing the engine reads.
+ * Kilograms are stored whatever it says (INV-1, §14.4); it decides how a number
+ * is spelled and, per §6.6, which step sizes the stepper offers.
  */
 
 import { TapNumber } from "../components/TapValue";
+import type { Units } from "../units";
+import { displayStep, fromDisplay, toDisplay, weight } from "../units";
 
 /** What the screen needs, all of it already in the database. */
 export type SettingsView = {
   readonly stepKg: number;
+  readonly units: Units;
   readonly restTargetS: number;
   readonly sessions: number;
   readonly lastExportedAt: string | null;
@@ -33,14 +38,10 @@ export type SettingsView = {
   readonly busy: boolean;
 };
 
-/** Trailing zeros trimmed: 2.5 stays, 1 is not 1.00. */
-function kg(value: number): string {
-  return `${Number(value.toFixed(2))} kg`;
-}
-
 export function SettingsScreen({
   view,
   onStep,
+  onUnits,
   onRest,
   onBackup,
   onErase,
@@ -48,6 +49,7 @@ export function SettingsScreen({
 }: {
   view: SettingsView;
   onStep: (stepKg: number) => void;
+  onUnits: (units: Units) => void;
   onRest: (seconds: number) => void;
   onBackup: () => void;
   onErase: (step: "ask" | "no" | "yes") => void;
@@ -65,23 +67,49 @@ export function SettingsScreen({
       <h1 className="lift">Settings</h1>
 
       <p className="prompt">
-        Two numbers, your log, and a way to start over. Everything else the app
+        Three of them, your log, and a way to start over. Everything else the app
         decides for you, which is the reason it is worth using.
       </p>
 
       <div className="rule" />
 
+      {/* First, because everything below it is written in whatever this says. */}
+      <div className="kv">
+        <span className="k">UNITS</span>
+        <span className="v">
+          <span className="seg seg-inline" role="radiogroup" aria-label="units">
+            {(["kg", "lb"] as const).map((option) => (
+              <button
+                key={option}
+                className={option === view.units ? "on" : undefined}
+                role="radio"
+                aria-checked={option === view.units}
+                onClick={() => onUnits(option)}
+              >
+                {option}
+              </button>
+            ))}
+          </span>
+        </span>
+      </div>
+      <p className="footnote flush">
+        Display only. Every weight is stored in kilograms and always has been, so
+        switching changes nothing in your log or in a backup you have taken.
+      </p>
+
       {/* The one number the engine reads about the athlete's equipment (B2.2). */}
       <div className="kv">
         <span className="k">STEP</span>
         <span className="v">
+          {/* Shown, stepped and read in the athlete's own units (§6.6): an lb
+              athlete moves in half-pounds, not in awkward fractions of a kilo. */}
           <TapNumber
-            value={view.stepKg}
-            onChange={onStep}
-            step={0.25}
-            min={0.25}
+            value={toDisplay(view.stepKg, view.units)}
+            onChange={(shown) => onStep(fromDisplay(shown, view.units))}
+            step={displayStep(view.units)}
+            min={displayStep(view.units)}
             label="the step"
-            format={kg}
+            format={(shown) => weight(fromDisplay(shown, view.units), view.units)}
           />
         </span>
       </div>

@@ -26,6 +26,8 @@ import { useState } from "react";
 import { TapChoice, TapNumber } from "../components/TapValue";
 import type { Exercise, ExerciseId, TrainingDay } from "../engine";
 import type { Backfill } from "../session";
+import type { Units } from "../units";
+import { weight } from "../units";
 
 /** What the screen needs before it can ask anything. */
 export type BackfillSetup = {
@@ -57,10 +59,12 @@ function shapeOf(sets: number, reps: number): number[][] {
 
 export function BackfillScreen({
   setup,
+  units,
   onSave,
   onBack,
 }: {
   setup: BackfillSetup;
+  units: Units;
   onSave: (draft: Backfill) => void;
   onBack: () => void;
 }) {
@@ -121,7 +125,7 @@ export function BackfillScreen({
           step={setup.stepKg}
           min={setup.stepKg}
           label="the weight"
-          format={(kg) => `${kg} kg`}
+          format={(kg) => weight(kg, units)}
         />
       </div>
       <div className="scheme">

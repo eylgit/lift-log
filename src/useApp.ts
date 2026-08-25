@@ -23,7 +23,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Format } from "./backup";
 import { saveFile } from "./backup";
 import { trainingDay } from "./clock";
-import type { ImportResult } from "./db";
+import type { ImportResult, Units } from "./db";
 import {
   exportCsv,
   exportJson,
@@ -141,6 +141,15 @@ export type Chrome = {
   readonly sample: boolean;
   /** "Start real" has been tapped and the confirm is up. */
   readonly leaving: boolean;
+  /**
+   * What weights are shown in (INV-1, G3.1).
+   *
+   * Here rather than on the screens for the same reason `sample` is: it is true
+   * of every screen at once, and threading a display preference through twelve
+   * `Screen` variants would mean twelve chances to drop it. Nothing reads this
+   * to decide anything — it only decides how a number is spelled.
+   */
+  readonly units: Units;
 };
 
 /** Today's session as the athlete has adjusted it. */
@@ -235,6 +244,8 @@ export type Actions = {
   readonly setStep: (stepKg: number) => void;
   /** Erase the log and the setup, permanently. Asks first (G3.1). */
   readonly erase: (step: "ask" | "no" | "yes") => void;
+  /** What weights are shown in. Changes no weight, only how it is spelled. */
+  readonly setUnits: (units: Units) => void;
 
   /* ----------------------------------------------------- sample data (G2) */
 
@@ -266,7 +277,11 @@ function planFrom(today: Today): Plan {
 
 export function useApp(): readonly [Screen, Actions, Chrome] {
   const [screen, setScreen] = useState<Screen>({ name: "loading" });
-  const [chrome, setChrome] = useState<Chrome>({ sample: false, leaving: false });
+  const [chrome, setChrome] = useState<Chrome>({
+    sample: false,
+    leaving: false,
+    units: "kg",
+  });
 
   // The current screen, for the actions to read without being rebuilt on every
   // state change. Actions fire from event handlers, so they need what is true
@@ -317,7 +332,7 @@ export function useApp(): readonly [Screen, Actions, Chrome] {
       const [settings, sessions] = await Promise.all([repo.getSettings(), repo.listSessions()]);
 
       const sample = settings.sampleDataAt !== null;
-      if (live.current) setChrome({ sample, leaving: false });
+      if (live.current) setChrome({ sample, leaving: false, units: settings.units });
 
       // Setup comes before either of the two screens below, because both of
       // them are about a log — and this athlete has not got one yet. See
@@ -796,6 +811,9 @@ export function useApp(): readonly [Screen, Actions, Chrome] {
       void run(async () => {
         const repo = await openRepo();
         await commitOnboarding(repo, here.setup.rotation, draft, new Date().toISOString());
+        // The units the athlete picked on the first screen become the shell's,
+        // so the card behind the install step is already in them.
+        if (live.current) setChrome((was) => ({ ...was, units: draft.units }));
         return { ...here, busy: false, saved: true };
       });
     },
@@ -816,6 +834,7 @@ export function useApp(): readonly [Screen, Actions, Chrome] {
       name: "settings",
       view: {
         stepKg: equipment.stepKg,
+        units: settings.units,
         restTargetS: settings.restTargetS,
         sessions: sessions.length,
         lastExportedAt: settings.lastExportedAt,
@@ -857,6 +876,32 @@ export function useApp(): readonly [Screen, Actions, Chrome] {
   );
 
   /**
+   * Change the display units (G3.1, INV-1).
+   *
+   * The only setting in the app that writes nothing the engine will ever read.
+   * No weight moves, no cache is rebuilt and the log is untouched — kilograms
+   * are what is stored and this decides how they are spelled (§14.4).
+   *
+   * The step is the one thing that looks like an exception and is not. An
+   * athlete who switches to pounds keeps the step they had, in kilograms,
+   * because that is genuinely the increment their kit offers; what changes is
+   * that the settings screen now offers to change it in lb-native sizes (§6.6).
+   */
+  const setUnits = useCallback(
+    (units: Units) => {
+      const here = current.current;
+      if (here.name !== "settings") return;
+      void run(async () => {
+        const repo = await openRepo();
+        await repo.saveSettings({ units });
+        if (live.current) setChrome((was) => ({ ...was, units }));
+        return readSettings();
+      });
+    },
+    [run, readSettings],
+  );
+
+  /**
    * Erase everything (G3.1).
    *
    * Three steps for the same reason `leaveSample` has three: this is
@@ -882,11 +927,13 @@ export function useApp(): readonly [Screen, Actions, Chrome] {
       void run(async () => {
         const repo = await openRepo();
         await resetToDefaults(repo);
-        if (live.current) setChrome({ sample: false, leaving: false });
-        const [rotation, equipment] = await Promise.all([
+        const [rotation, equipment, settings] = await Promise.all([
           repo.listExercises(),
           repo.getEquipment(),
+          repo.getSettings(),
         ]);
+        // The wipe put the settings row back to the shipped one, units included.
+        if (live.current) setChrome({ sample: false, leaving: false, units: settings.units });
         return {
           name: "onboarding",
           setup: { rotation, stepKg: equipment.stepKg },
@@ -917,7 +964,7 @@ export function useApp(): readonly [Screen, Actions, Chrome] {
       const repo = await openRepo();
       const settings = await repo.getSettings();
       await replaceAll(repo, sampleSnapshot(trainingDay(), settings, new Date().toISOString()));
-      if (live.current) setChrome({ sample: true, leaving: false });
+      if (live.current) setChrome((was) => ({ ...was, sample: true, leaving: false }));
       const today = await loadToday(repo);
       return { name: "today", today, plan: planFrom(today) };
     });
@@ -945,11 +992,13 @@ export function useApp(): readonly [Screen, Actions, Chrome] {
       void run(async () => {
         const repo = await openRepo();
         await resetToDefaults(repo);
-        if (live.current) setChrome({ sample: false, leaving: false });
-        const [rotation, equipment] = await Promise.all([
+        const [rotation, equipment, settings] = await Promise.all([
           repo.listExercises(),
           repo.getEquipment(),
+          repo.getSettings(),
         ]);
+        // The wipe put the settings row back to the shipped one, units included.
+        if (live.current) setChrome({ sample: false, leaving: false, units: settings.units });
         return {
           name: "onboarding",
           setup: { rotation, stepKg: equipment.stepKg },
@@ -1125,6 +1174,7 @@ export function useApp(): readonly [Screen, Actions, Chrome] {
       finishOnboarding,
       openSettings,
       setStep,
+      setUnits,
       erase,
       trySample,
       leaveSample,

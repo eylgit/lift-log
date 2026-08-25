@@ -17,16 +17,18 @@ import { openDexieRepo } from "../src/db/dexie-repo";
 import type { Repo } from "../src/db";
 import type { Exercise, Session } from "../src/engine";
 import { DEFAULT_STEP_KG } from "../src/engine";
+import { fromDisplay } from "../src/units";
 import {
   ONBOARDING_STEPS,
   PROJECTION_SESSIONS,
-  STEP_CHOICES,
+  stepChoices,
   commitOnboarding,
   initialDraft,
   needsOnboarding,
   projectedGainKg,
   resolveRotation,
   setStepKg,
+  setUnits,
   setWeakSide,
 } from "../src/onboarding";
 
@@ -53,17 +55,23 @@ function session(over: Partial<Session> = {}): Session {
 
 describe("the step, offered (G1.1)", () => {
   it("offers only steps that are real increments", () => {
-    expect(STEP_CHOICES).toEqual([0.5, 1, 1.25, 2, 2.5, 5]);
+    expect(stepChoices("kg")).toEqual([0.5, 1, 1.25, 2, 2.5, 5]);
   });
 
   it("includes the app's own default, so the screen opens on something chosen", () => {
-    expect(STEP_CHOICES).toContain(DEFAULT_STEP_KG);
+    expect(stepChoices("kg")).toContain(DEFAULT_STEP_KG);
   });
 
   it("keeps 1.25, which no grid of halves would contain", () => {
     // A pair of micro-plates. Leaving it off would have told every athlete who
     // owns them to pick something else.
-    expect(STEP_CHOICES).toContain(1.25);
+    expect(stepChoices("kg")).toContain(1.25);
+  });
+
+  it("offers lb-native sizes to an lb athlete, not converted kilos (§6.6)", () => {
+    // The two lists are not conversions of one another and were never meant to
+    // be: 2.5 kg is 5.5 lb, which is not a thing any rack does.
+    expect(stepChoices("lb")).toEqual([1, 1.25, 2.5, 5, 10]);
   });
 
   it("projects the step forward as a rate of progress, not just a weight", () => {
@@ -82,6 +90,36 @@ describe("the step, offered (G1.1)", () => {
   it("projects over ten sessions by default", () => {
     expect(PROJECTION_SESSIONS).toBe(10);
     expect(projectedGainKg(2)).toBe(2 * PROJECTION_SESSIONS);
+  });
+});
+
+describe("the units question (G1.1, §6.6)", () => {
+  it("opens on whatever the app is already set to", () => {
+    expect(initialDraft(ROTATION, 1, "lb").units).toBe("lb");
+    expect(initialDraft(ROTATION).units).toBe("kg");
+  });
+
+  it("re-expresses the step in the new unit rather than converting it", () => {
+    // 2.5 kg is 5.51 lb, which is not a size any rack offers. The athlete gets
+    // the nearest thing that is — which is what they would have chosen.
+    const kg = setStepKg(initialDraft(ROTATION), 2.5);
+    expect(setUnits(kg, "lb").stepKg).toBe(fromDisplay(5, "lb"));
+  });
+
+  it("is a no-op when the unit has not changed", () => {
+    const draft = setStepKg(initialDraft(ROTATION), 2.5);
+    expect(setUnits(draft, "kg")).toBe(draft);
+  });
+
+  it("comes back to a sensible kilogram step on the way back", () => {
+    let draft = setStepKg(initialDraft(ROTATION), 2.5);
+    draft = setUnits(draft, "lb");
+    expect(setUnits(draft, "kg").stepKg).toBe(2.5);
+  });
+
+  it("writes the choice, so the whole app is in it afterwards", async () => {
+    // Covered end to end in the commit tests below; this is the value.
+    expect(setUnits(initialDraft(ROTATION), "lb").units).toBe("lb");
   });
 });
 
@@ -217,6 +255,12 @@ describe("committing the answers (G1)", () => {
     expect(byId.get("press")!.weakSide).toBe("right");
     expect(byId.get("press")!.startKg).toBe(2.5);
     expect(byId.get("row")!.weakSide).toBe("left");
+  });
+
+  it("writes the units the athlete chose", async () => {
+    const draft = setUnits(initialDraft(ROTATION), "lb");
+    await commitOnboarding(repo, ROTATION, draft, "2026-08-24T09:00:00.000Z");
+    expect((await repo.getSettings()).units).toBe("lb");
   });
 
   it("records that setup happened, so it is not asked again", async () => {

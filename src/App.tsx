@@ -109,6 +109,7 @@ export default function App() {
           today={screen.today}
           plan={screen.plan}
           install={install}
+          units={chrome.units}
           actions={actions}
         />
       )}
@@ -118,6 +119,7 @@ export default function App() {
           view={screen.view}
           restTargetS={screen.restTargetS}
           sideOverride={screen.sideOverride}
+          units={chrome.units}
           actions={actions}
         />
       )}
@@ -146,6 +148,7 @@ export default function App() {
         <SettingsScreen
           view={screen.view}
           onStep={actions.setStep}
+          onUnits={actions.setUnits}
           onRest={actions.chooseRest}
           onBackup={actions.openBackup}
           onErase={actions.erase}
@@ -161,6 +164,7 @@ export default function App() {
           saved={screen.saved}
           busy={screen.busy}
           install={install}
+          units={chrome.units}
           onFinish={actions.finishOnboarding}
           onInstall={actions.install}
           onDone={actions.dismiss}
@@ -183,6 +187,7 @@ export default function App() {
         <HistoryScreen
           heat={screen.history.heat}
           log={screen.history.log}
+          units={chrome.units}
           onOpen={actions.openDetail}
           onAdd={actions.openBackfill}
           onBack={actions.dismiss}
@@ -192,6 +197,7 @@ export default function App() {
       {screen.name === "backfill" && (
         <BackfillScreen
           setup={screen.setup}
+          units={chrome.units}
           onSave={actions.saveBackfill}
           onBack={actions.openHistory}
         />
@@ -203,6 +209,7 @@ export default function App() {
       {screen.name === "detail" && (
         <DetailScreen
           detail={screen.detail}
+          units={chrome.units}
           onDelete={actions.deleteSession}
           onBack={actions.openHistory}
         />
@@ -211,13 +218,19 @@ export default function App() {
       {screen.name === "progress" && (
         <ProgressScreen
           progress={screen.progress}
+          units={chrome.units}
           onChoose={actions.openProgress}
           onBack={actions.dismiss}
         />
       )}
 
       {screen.name === "summary" && (
-        <SummaryScreen view={screen.view} outcome={screen.outcome} onDismiss={actions.dismiss} />
+        <SummaryScreen
+          view={screen.view}
+          outcome={screen.outcome}
+          units={chrome.units}
+          onDismiss={actions.dismiss}
+        />
       )}
 
       <div className="status">

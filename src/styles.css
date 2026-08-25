@@ -712,3 +712,15 @@ button.quiet {
 
 /* The one link in the app (G3.3). */
 .aside a { color: var(--accent); text-underline-offset: 3px; }
+
+/* The units toggle, inline in a settings row rather than full width (G3.1). */
+.seg.seg-inline { display: inline-flex; border-radius: 8px; }
+.seg.seg-inline button {
+  flex: none;
+  min-height: 40px;
+  min-width: 56px;
+  font-size: 13px;
+}
+
+/* The units question, sitting just above the step choices (G1.1, §6.6). */
+.units-choice { display: flex; justify-content: flex-end; margin: 0 0 12px; }

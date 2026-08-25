@@ -26,6 +26,8 @@ import { useState } from "react";
 import { weekdayIndex } from "../clock";
 import type { TrainingDay } from "../engine";
 import type { LoggedSet, SessionDetail } from "../history";
+import type { Units } from "../units";
+import { weight } from "../units";
 
 const DAYS = [
   "Monday", "Tuesday", "Wednesday", "Thursday",
@@ -39,10 +41,12 @@ const MONTHS = [
 
 export function DetailScreen({
   detail,
+  units,
   onDelete,
   onBack,
 }: {
   detail: SessionDetail;
+  units: Units;
   onDelete: () => void;
   onBack: () => void;
 }) {
@@ -94,7 +98,7 @@ export function DetailScreen({
       {overridden && (
         <div className="kv">
           <span className="k">PRESCRIBED</span>
-          <span className="v">{detail.prescribedKg} kg</span>
+          <span className="v">{weight(detail.prescribedKg, units)}</span>
         </div>
       )}
       {timed && (

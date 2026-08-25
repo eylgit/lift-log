@@ -27,12 +27,15 @@ import type { InstallState } from "../platform";
 import type { OnboardingDraft, OnboardingStep } from "../onboarding";
 import {
   PROJECTION_SESSIONS,
-  STEP_CHOICES,
   initialDraft,
   projectedGainKg,
   setStepKg,
+  setUnits,
   setWeakSide,
+  stepChoices,
 } from "../onboarding";
+import type { Units } from "../units";
+import { displayWeight, fromDisplay, weight } from "../units";
 import { InstallScreen } from "./Install";
 
 /** What the wizard needs before it can ask anything. */
@@ -46,16 +49,12 @@ export type OnboardingSetup = {
 /** The three screens that ask something. `install` is reached by saving. */
 const ASKING: readonly OnboardingStep[] = ["step", "sides", "alarm"];
 
-/** Weights are written with as few decimals as they need: 2.5, but 1 not 1.0. */
-function kg(value: number): string {
-  return `${Number(value.toFixed(2))} kg`;
-}
-
 export function OnboardingScreen({
   setup,
   saved,
   busy,
   install,
+  units,
   onFinish,
   onInstall,
   onDone,
@@ -67,6 +66,8 @@ export function OnboardingScreen({
   /** The write is in flight, so Finish cannot be pressed twice. */
   busy: boolean;
   install: InstallState;
+  /** How to spell a weight, and which step sizes to offer (§6.6). */
+  units: Units;
   onFinish: (draft: OnboardingDraft) => void;
   onInstall: () => void;
   onDone: () => void;
@@ -75,7 +76,7 @@ export function OnboardingScreen({
 }) {
   const [at, setAt] = useState(0);
   const [draft, setDraft] = useState<OnboardingDraft>(() =>
-    initialDraft(setup.rotation, setup.stepKg),
+    initialDraft(setup.rotation, setup.stepKg, units),
   );
 
   // `saved` wins over the local step, always. Once the answers are written the
@@ -121,7 +122,9 @@ export function OnboardingScreen({
       {step === "step" && (
         <StepQuestion
           stepKg={draft.stepKg}
+          units={draft.units}
           onChoose={(value) => setDraft(setStepKg(draft, value))}
+          onUnits={(next) => setDraft(setUnits(draft, next))}
         />
       )}
 
@@ -175,10 +178,15 @@ export function OnboardingScreen({
  */
 function StepQuestion({
   stepKg,
+  units,
   onChoose,
+  onUnits,
 }: {
   stepKg: number;
+  units: Units;
+  /** In kilograms — the choices are shown in display units and converted. */
   onChoose: (stepKg: number) => void;
+  onUnits: (units: Units) => void;
 }) {
   return (
     <>
@@ -189,23 +197,46 @@ function StepQuestion({
         the only thing Lift Log needs to know about your equipment.
       </p>
 
+      {/* Asked before the number, because a number has to be in some unit. An
+          athlete who answered in kilograms and switched afterwards would be
+          left holding a step of 5.5 lb, which is what §6.6 forbids. */}
+      <div className="units-choice">
+        <span className="seg seg-inline" role="radiogroup" aria-label="units">
+          {(["kg", "lb"] as const).map((option) => (
+            <button
+              key={option}
+              className={option === units ? "on" : undefined}
+              role="radio"
+              aria-checked={option === units}
+              onClick={() => onUnits(option)}
+            >
+              {option}
+            </button>
+          ))}
+        </span>
+      </div>
+
       <div className="choices" role="radiogroup" aria-label="the step">
-        {STEP_CHOICES.map((value) => (
-          <button
-            key={value}
-            className={value === stepKg ? "choice on" : "choice"}
-            role="radio"
-            aria-checked={value === stepKg}
-            onClick={() => onChoose(value)}
-          >
-            {kg(value)}
-          </button>
-        ))}
+        {stepChoices(units).map((shown) => {
+          const kg = fromDisplay(shown, units);
+          return (
+            <button
+              key={shown}
+              className={kg === stepKg ? "choice on" : "choice"}
+              role="radio"
+              aria-checked={kg === stepKg}
+              onClick={() => onChoose(kg)}
+            >
+              {displayWeight(shown, units)}
+            </button>
+          );
+        })}
       </div>
 
       <p className="footnote">
-        Adjustable dumbbells usually move in 2.5 kg and a fixed rack is often 2
-        or 2.5. Micro-plates are what make 0.5 and 1.25 possible.
+        {units === "lb"
+          ? "Adjustable dumbbells usually move in 5 lb and a fixed rack is often 5 or 10. Micro-plates are what make 1 and 1.25 possible."
+          : "Adjustable dumbbells usually move in 2.5 kg and a fixed rack is often 2 or 2.5. Micro-plates are what make 0.5 and 1.25 possible."}
       </p>
 
       <div className="rule" />
@@ -213,8 +244,8 @@ function StepQuestion({
       <p className="prompt">
         This is also how fast you get stronger. A session where you hit every rep
         adds one step, and nothing else moves the weight — so{" "}
-        {PROJECTION_SESSIONS} clean sessions at {kg(stepKg)} is{" "}
-        <strong>{kg(projectedGainKg(stepKg))} heavier</strong>.
+        {PROJECTION_SESSIONS} clean sessions at {weight(stepKg, units)} is{" "}
+        <strong>{weight(projectedGainKg(stepKg), units)} heavier</strong>.
       </p>
 
       <p className="hint">

@@ -29,6 +29,8 @@ import type { Exercise, ExerciseId, Session, Side } from "./engine";
 import { DEFAULT_STEP_KG } from "./engine";
 import type { Repo, Settings } from "./db";
 import { rebuildState } from "./db";
+import type { Units } from "./units";
+import { nearestStep } from "./units";
 
 /* ----------------------------------------------------------------- steps */
 
@@ -49,18 +51,18 @@ export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
 /* ------------------------------------------------------------ the choices */
 
 /**
- * The steps offered, in kilograms.
+ * The steps offered, in the athlete's own units.
  *
  * A list and not a free stepper, for one reason: a stranger on the first screen
  * of an app they have never used does not know what number belongs here, and a
- * blank stepper starting at 1 asks them to guess. Six choices, each of which is
- * a real thing a real rack does, is one tap instead.
+ * blank stepper starting at 1 asks them to guess. A handful of choices, each of
+ * which is a real thing a real rack does, is one tap instead.
  *
- * 1.25 is on the list and would not be on any grid of halves — it is what a
- * pair of micro-plates gives you, and leaving it off would have quietly told
- * every athlete who owns them to pick something else. It is settable to
- * anything at all in settings later (G3.1); this is the fast path, not the
- * limit.
+ * The lists live in `src/units.ts` because there are two of them and they are
+ * not conversions of one another: §6.6 says an lb athlete sets an lb-native
+ * step — 5 lb or 2.5 lb — rather than the ugly conversion of 2.5 kg. 1.25 in
+ * either unit is what a pair of micro-plates gives you. Settable to anything at
+ * all in settings later (G3.1); this is the fast path, not the limit.
  *
  * Note what the number does *not* claim. B2.2.2 threw out the idea that the
  * loadable weights are the multiples of the step: a fixed rack runs 5, 10,
@@ -68,7 +70,7 @@ export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
  * is what the athlete *intends* to add, the engine names a target from it, and
  * the athlete reconciles the target with the rack by tapping the weight.
  */
-export const STEP_CHOICES: readonly number[] = [0.5, 1, 1.25, 2, 2.5, 5];
+export { stepChoices } from "./units";
 
 /** How many clean sessions the "and then you are here" line projects forward. */
 export const PROJECTION_SESSIONS = 10;
@@ -98,6 +100,15 @@ export function projectedGainKg(stepKg: number, sessions = PROJECTION_SESSIONS):
  */
 export type OnboardingDraft = {
   readonly stepKg: number;
+  /**
+   * What weights are read in (§5, §6.6).
+   *
+   * Asked here rather than left to settings because the very next question is a
+   * number, and a number has to be in some unit. An lb athlete who answered the
+   * step in kilograms and switched afterwards would be left holding 5.5 lb —
+   * the "ugly conversion of 2.5 kg" §6.6 exists to prevent.
+   */
+  readonly units: Units;
   readonly weakSides: ReadonlyMap<ExerciseId, Side | null>;
 };
 
@@ -105,9 +116,11 @@ export type OnboardingDraft = {
 export function initialDraft(
   rotation: readonly Exercise[],
   stepKg: number = DEFAULT_STEP_KG,
+  units: Units = "kg",
 ): OnboardingDraft {
   return {
     stepKg,
+    units,
     weakSides: new Map(rotation.map((exercise) => [exercise.id, null])),
   };
 }
@@ -126,6 +139,19 @@ export function setWeakSide(
 /** Choose the step. */
 export function setStepKg(draft: OnboardingDraft, stepKg: number): OnboardingDraft {
   return { ...draft, stepKg };
+}
+
+/**
+ * Choose the units, and re-express the step in them (§6.6).
+ *
+ * The step moves to the nearest size the new unit actually offers rather than
+ * being converted: 2.5 kg becomes 5 lb, not 5.5 lb. Nothing has been written
+ * yet, so this costs the athlete nothing — and it is the whole reason the
+ * question is asked before the number rather than after it.
+ */
+export function setUnits(draft: OnboardingDraft, units: Units): OnboardingDraft {
+  if (units === draft.units) return draft;
+  return { ...draft, units, stepKg: nearestStep(draft.stepKg, units) };
 }
 
 /**
@@ -209,6 +235,6 @@ export async function commitOnboarding(
 ): Promise<void> {
   await repo.saveEquipment({ stepKg: draft.stepKg });
   await repo.saveRotation(resolveRotation(rotation, draft));
-  await repo.saveSettings({ onboardedAt: now });
+  await repo.saveSettings({ onboardedAt: now, units: draft.units });
   await rebuildState(repo);
 }

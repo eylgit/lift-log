@@ -914,8 +914,9 @@ knowing nothing. Both end with `rebuildState`, for the reason `restore` states a
 clears the cache and does not refill it, so whoever replaces the log owns rebuilding from it.*
 
 ## G3 — Settings
-- **G3.1** Step size, rest length, units display, export/import, about, reset. *(Five of the six
-  are done. **Units display is not built and is the open question at the foot of this section.**)*
+- **G3.1** Step size, rest length, units display, export/import, about, reset. *(All six done.
+  Units display was built after the project owner's call — the reasoning that led to asking, and
+  what the answer cost, is at the foot of this section.)*
   - *Step size — a stepper in 0.25 kg, so anything is reachable; onboarding's six choices are the
     fast path, not the limit. **It rebuilds the cache**, and that is required rather than tidy:
     `applyOutcome` reads the step out of `equipment` every time it folds a session (C3), so the
@@ -933,6 +934,7 @@ clears the cache and does not refill it, so whoever replaces the log owns rebuil
   - *Reset — `resetToDefaults` behind a confirm that names the backup file as the only way back.
     It lands on onboarding, which is the honest consequence and not a redirect: the database is a
     fresh install now and `needsOnboarding` is true again.*
+  - *Units — `src/units.ts`, and see below.*
 - **G3.2** Resist adding settings. Each one is a decision handed back to the user, which is the
   thing the app exists to remove. *(Taken seriously enough to write down what was left out, in the
   header of `src/screens/Settings.tsx`: no theme (INV-8), no per-exercise increment (B2.1), and no
@@ -944,29 +946,50 @@ clears the cache and does not refill it, so whoever replaces the log owns rebuil
   on a screen somebody actually reaches, which is what §16 asks for. The disclaimer is three lines
   because a long one is not read and neither version is legal advice.)*
 
-### Units display — deferred, and why it is a question rather than an oversight
-*The plan lists it in one clause; it is the largest single item in Part G and the only one that is
-not obviously right to build.*
+### Units display — asked, and then built
+*This was raised as a question rather than assumed, because the two readings of the design led to
+different work. §14.7 says every setting is a decision handed back and "you are one user, and
+you'll build for imaginary ones" — and the owner trains in kilograms, so a units toggle looked
+like a feature for somebody who does not exist. Against that, §5 lists units in onboarding, §6.6
+lists pounds as an edge case that **must** be handled, and §14.4 says decide it now because
+retrofitting is miserable. **The project owner's answer was to build it fully.** It is recorded
+here because the reasoning is not recoverable from the diff.*
 
-*The cost is real. INV-1 says kilograms are stored and converted at display only, and nothing in
-the app converts anything today — every weight is written `${x} kg` inline, at roughly thirty call
-sites across seven screens. Doing it properly means a conversion module, a rounding rule for
-display, `units` threaded through the screens, and — per §6.6 — an **lb-native step**, so an lb
-athlete sets 5 lb rather than the ugly conversion of 2.5 kg. That last part is the tricky half: a
-5 lb step stored as 2.26796 kg has to come back out as clean multiples of five on screen.*
+*§14.4 turned out to be half right. The **storage** half was decided in Part B and cost nothing;
+the **display** half was retrofitted across seven screens and was exactly as tedious as promised.
+What made it survivable is that the rule had been kept — INV-1 meant there was no weight anywhere
+that needed migrating, only text that needed routing through one function.*
 
-*The case against is §14.7, quoted at the top of G3.2: every setting is a decision handed back, and
-"you are one user, and you'll build for imaginary ones". The project owner trains in kilograms. The
-whole app, the rotation, the simulation and the week that starts on Monday are all European. A
-units toggle is, on the evidence, a feature for somebody who does not exist yet.*
+- *`src/units.ts` — the conversion, the formatting, and the two step lists. `KG_PER_LB` is the
+  exact 1959 definition rather than 2.2 or 2.205, which would put a visible error on the screen at
+  gym weights. Pounds print to one decimal and kilograms to two: 45 grams against 10, which is
+  about the same physical precision.*
+- *Threaded through `Chrome` rather than through the twelve `Screen` variants. Units is true of
+  every screen at once, like sample mode, and carrying it through each variant would have meant
+  twelve chances to drop it.*
+- ***The lb-native step (§6.6).*** The two step lists are not conversions of one another and were
+  never meant to be — 2.5 kg is 5.5 lb, which is not a size any rack offers. An lb athlete gets
+  1, 1.25, 2.5, 5, 10 lb, and switching units on the setup screen re-expresses the step as the
+  **nearest offered size** rather than converting it: 2.5 kg becomes 5 lb, which is what they
+  would have picked.
+- ***Units moved into onboarding, which the plan did not have.*** It has to: G1.1's second screen
+  asks for a number, and a number has to be in some unit. An athlete who answered in kilograms and
+  switched afterwards would be left holding a step of 5.5 lb — precisely the "ugly conversion"
+  §6.6 exists to prevent. It is one toggle above the choices, and it costs no extra screen.
+- *One wart found by looking at it: an offered size printed through `weight()` round-trips through
+  kilograms and two decimals, so the **1.25 lb** button read **1.3 lb** beside a sentence about
+  1.25 lb micro-plates. Offered sizes are canonical values in their own unit and now print as
+  themselves (`displayWeight`).*
+- *The drift that was not engineered away: storage rounds to two decimals (B3.1), so an lb step
+  added to itself many times wanders a fraction of a pound. B2.2.2 already answers this — the step
+  is an aspiration and not a constraint, the engine names a target and the athlete reconciles it
+  with the rack. A test bounds the wander at half a pound over forty clean sessions.*
 
-*The case for is that §5 lists units in onboarding, §6.6 lists pounds as an edge case that must be
-handled, and §14.4 says decide it now because retrofitting is miserable — which is exactly the
-argument that keeps `units` in the settings row and the export today, unread by anything.*
-
-*Both readings are defensible and they lead to different work, so this is the project owner's call
-and not the builder's. Until it is made, the settings screen has no units row: a toggle that
-changed nothing on any screen would be worse than its absence.*
+*Twenty-two tests, and one of them is a **guard in the manner of `db-boundary.test.ts`**: no file
+under `src/` may interpolate a value into the letters `kg` again. `${weightKg} kg` was the shape
+of every weight on every screen before this, it is the shape the next new screen will reach for,
+and nothing but a test stops it coming back. It was checked by reintroducing one and watching the
+suite name the file.*
 
 ### Exit criteria — Part G
 - [x] A fresh install reaches the first session in under two minutes. *Measured in a headless
