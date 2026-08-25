@@ -20,6 +20,7 @@ export type { Settings, Units } from "./types";
 export type { ExportDocument, ImportPreview, ImportResult } from "./transfer";
 export { EXPORT_FORMAT, exportCsv, exportJson, importJson, previewJson } from "./transfer";
 export { rebuildState } from "./replay";
+export { replaceAll, resetToDefaults } from "./seed";
 
 /**
  * The open database, opened once.

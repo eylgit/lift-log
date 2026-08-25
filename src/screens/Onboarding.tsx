@@ -59,6 +59,7 @@ export function OnboardingScreen({
   onFinish,
   onInstall,
   onDone,
+  onTrySample,
 }: {
   setup: OnboardingSetup;
   /** The answers are in the database. Set by the machine, never by this file. */
@@ -69,6 +70,8 @@ export function OnboardingScreen({
   onFinish: (draft: OnboardingDraft) => void;
   onInstall: () => void;
   onDone: () => void;
+  /** Skip all of this and look at somebody else's fourteen weeks (G2.1). */
+  onTrySample: () => void;
 }) {
   const [at, setAt] = useState(0);
   const [draft, setDraft] = useState<OnboardingDraft>(() =>
@@ -141,6 +144,15 @@ export function OnboardingScreen({
       ) : (
         <button className="start" onClick={() => setAt(at + 1)}>
           Next
+        </button>
+      )}
+
+      {/* G2.1 — one tap from the landing state, which is this screen. It is on
+          the first step only: somebody who has answered two questions is
+          setting the app up, and offering to throw that away is noise. */}
+      {at === 0 && (
+        <button className="missed" onClick={onTrySample}>
+          Just looking? Try it with sample data
         </button>
       )}
     </>

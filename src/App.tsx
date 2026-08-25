@@ -19,13 +19,14 @@ import { InstallScreen } from "./screens/Install";
 import { NudgeScreen } from "./screens/Nudge";
 import { OnboardingScreen } from "./screens/Onboarding";
 import { ProgressScreen } from "./screens/Progress";
+import { SampleBanner } from "./screens/Sample";
 import { SessionScreen } from "./screens/Session";
 import { SummaryScreen } from "./screens/Summary";
 import { TodayScreen } from "./screens/Today";
 import { useApp } from "./useApp";
 
 export default function App() {
-  const [screen, actions] = useApp();
+  const [screen, actions, chrome] = useApp();
   const [online, setOnline] = useState(navigator.onLine);
   const [persisted, setPersisted] = useState<boolean | null>(null);
   const [install, setInstall] = useState<InstallState>(() =>
@@ -69,6 +70,18 @@ export default function App() {
           <span className="spacer" />
           <button onClick={() => void updateServiceWorker(true)}>Reload</button>
         </div>
+      )}
+
+      {/* G2.2 — on every screen, for as long as the log is somebody else's.
+          Not over a session: the one place it would be actively unhelpful is
+          under a dumbbell, and by then the athlete knows what they are in. */}
+      {chrome.sample && !inSession && (
+        <SampleBanner
+          leaving={chrome.leaving}
+          onAsk={() => actions.leaveSample("ask")}
+          onCancel={() => actions.leaveSample("no")}
+          onConfirm={() => actions.leaveSample("yes")}
+        />
       )}
 
       {/* The three screens each end with their own `grow`, which is what pins the
@@ -139,6 +152,7 @@ export default function App() {
           onFinish={actions.finishOnboarding}
           onInstall={actions.install}
           onDone={actions.dismiss}
+          onTrySample={actions.trySample}
         />
       )}
 

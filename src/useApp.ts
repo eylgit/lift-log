@@ -24,7 +24,16 @@ import type { Format } from "./backup";
 import { saveFile } from "./backup";
 import { trainingDay } from "./clock";
 import type { ImportResult } from "./db";
-import { exportCsv, exportJson, importJson, openRepo, previewJson, rebuildState } from "./db";
+import {
+  exportCsv,
+  exportJson,
+  importJson,
+  openRepo,
+  previewJson,
+  rebuildState,
+  replaceAll,
+  resetToDefaults,
+} from "./db";
 import type { BackupStatus } from "./durability";
 import { backupStatus, readStorage } from "./durability";
 import type { InstallState } from "./platform";
@@ -50,6 +59,7 @@ import type { BackupState } from "./screens/Backup";
 import type { OnboardingSetup } from "./screens/Onboarding";
 import type { OnboardingDraft } from "./onboarding";
 import { commitOnboarding, needsOnboarding } from "./onboarding";
+import { sampleSnapshot } from "./sample";
 import { heldPrompt, promptToInstall } from "./install";
 import type { Today } from "./today";
 import { loadToday } from "./today";
@@ -115,6 +125,21 @@ export type Screen =
       readonly status: BackupStatus;
       readonly busy: boolean;
     };
+
+/**
+ * What the shell draws around whichever screen is on (G2.2).
+ *
+ * Sample mode is not a screen — it is true of every screen at once — so it
+ * rides beside the screen rather than inside it. The alternative was a `sample`
+ * field on each of the twelve `Screen` variants, every one of which would have
+ * to be carried correctly through every transition.
+ */
+export type Chrome = {
+  /** The log is fourteen weeks of a fictional athlete, and says so. */
+  readonly sample: boolean;
+  /** "Start real" has been tapped and the confirm is up. */
+  readonly leaving: boolean;
+};
 
 /** Today's session as the athlete has adjusted it. */
 export type Plan = {
@@ -200,6 +225,19 @@ export type Actions = {
   /** Write the answers to the three setup questions and move to install. */
   readonly finishOnboarding: (draft: OnboardingDraft) => void;
 
+  /* ----------------------------------------------------- sample data (G2) */
+
+  /** Fill the log with fourteen weeks of somebody else's training (G2.1). */
+  readonly trySample: () => void;
+  /**
+   * Throw the sample away and start a real log (G2.2).
+   *
+   * Three steps rather than one call, because this is the only unrecoverable
+   * thing in the app that is not a session delete: `"ask"` raises the confirm,
+   * `"no"` puts it away, `"yes"` wipes the database.
+   */
+  readonly leaveSample: (step: "ask" | "no" | "yes") => void;
+
   /* ---------------------------------------------------------- nudge (F3) */
 
   /** Dismiss the backup nudge, and do not ask again for a while (F3.2). */
@@ -215,8 +253,9 @@ function planFrom(today: Today): Plan {
   };
 }
 
-export function useApp(): readonly [Screen, Actions] {
+export function useApp(): readonly [Screen, Actions, Chrome] {
   const [screen, setScreen] = useState<Screen>({ name: "loading" });
+  const [chrome, setChrome] = useState<Chrome>({ sample: false, leaving: false });
 
   // The current screen, for the actions to read without being rebuilt on every
   // state change. Actions fire from event handlers, so they need what is true
@@ -266,6 +305,9 @@ export function useApp(): readonly [Screen, Actions] {
       // file backups is the least welcome thing in the world (F3.2).
       const [settings, sessions] = await Promise.all([repo.getSettings(), repo.listSessions()]);
 
+      const sample = settings.sampleDataAt !== null;
+      if (live.current) setChrome({ sample, leaving: false });
+
       // Setup comes before either of the two screens below, because both of
       // them are about a log — and this athlete has not got one yet. See
       // `needsOnboarding` for why an empty log is half of the test.
@@ -282,8 +324,11 @@ export function useApp(): readonly [Screen, Actions] {
         };
       }
 
+      // Not over sample data. Interrupting somebody to insist they back up
+      // fourteen weeks of a fictional athlete's training would be the app
+      // talking about itself, and it is the first thing a visitor would see.
       const status = backupStatus(sessions, settings.lastExportedAt, settings.lastNudgedAt);
-      if (status.due) return { name: "nudge", status, busy: false };
+      if (status.due && !sample) return { name: "nudge", status, busy: false };
 
       const today = await loadToday(repo);
       return { name: "today", today, plan: planFrom(today) };
@@ -746,6 +791,69 @@ export function useApp(): readonly [Screen, Actions] {
     [run],
   );
 
+  /* ------------------------------------------------------- sample data (G2) */
+
+  /**
+   * Fill the log with somebody else's fourteen weeks (G2.1).
+   *
+   * The whole database is replaced rather than the sessions appended, because
+   * the sample athlete has different start weights, a different weak side and a
+   * 2.5 kg step — a log of 30 kg split squats replayed against a rotation that
+   * starts at 1 kg is not a lighter version of the same thing, it is nonsense.
+   *
+   * It lands on Today rather than on the calendar, and that is the point of the
+   * feature: what a first-time visitor should see is the card, prescribing a
+   * real weight, with a reason under it and a history behind it (G2.3).
+   */
+  const trySample = useCallback(() => {
+    void run(async () => {
+      const repo = await openRepo();
+      const settings = await repo.getSettings();
+      await replaceAll(repo, sampleSnapshot(trainingDay(), settings, new Date().toISOString()));
+      if (live.current) setChrome({ sample: true, leaving: false });
+      const today = await loadToday(repo);
+      return { name: "today", today, plan: planFrom(today) };
+    });
+  }, [run]);
+
+  /**
+   * Leave sample mode (G2.2).
+   *
+   * The confirm is not politeness. This is the one unrecoverable operation in
+   * the app that is not a session delete — `resetToDefaults` discards the whole
+   * database — and it sits behind a banner that is on screen constantly, which
+   * is exactly the button somebody eventually presses by accident.
+   *
+   * What comes back is onboarding, because the wipe clears `onboardedAt` along
+   * with everything else and `needsOnboarding` is true again. That is right:
+   * "start real" means getting the app a stranger gets, and the setup answers
+   * being thrown away belonged to somebody fictional.
+   */
+  const leaveSample = useCallback(
+    (step: "ask" | "no" | "yes") => {
+      if (step !== "yes") {
+        setChrome((was) => (was.sample ? { ...was, leaving: step === "ask" } : was));
+        return;
+      }
+      void run(async () => {
+        const repo = await openRepo();
+        await resetToDefaults(repo);
+        if (live.current) setChrome({ sample: false, leaving: false });
+        const [rotation, equipment] = await Promise.all([
+          repo.listExercises(),
+          repo.getEquipment(),
+        ]);
+        return {
+          name: "onboarding",
+          setup: { rotation, stepKg: equipment.stepKg },
+          saved: false,
+          busy: false,
+        };
+      });
+    },
+    [run],
+  );
+
   /* ------------------------------------------------------------ nudge (F3) */
 
   /**
@@ -898,7 +1006,10 @@ export function useApp(): readonly [Screen, Actions] {
       openInstall,
       install,
       finishOnboarding,
+      trySample,
+      leaveSample,
       dismissNudge,
     },
+    chrome,
   ] as const;
 }

@@ -49,6 +49,17 @@ export type Settings = {
    * training would be the app forgetting who it was talking to.
    */
   readonly onboardedAt: string | null;
+  /**
+   * ISO instant the sample log was seeded, or null for a real one (G2).
+   *
+   * Sample mode is a fact about the whole database rather than about the rows
+   * in it — every session, every set and the rotation itself came from the
+   * generator — so one field says so and the banner reads it. It also silences
+   * the backup nudge: interrupting somebody to tell them to back up fourteen
+   * weeks of a fictional athlete's training would be the app talking about
+   * itself (F3.2).
+   */
+  readonly sampleDataAt: string | null;
   /** What version of this schema wrote the data. Also goes in the export (C4). */
   readonly schemaVersion: number;
 };

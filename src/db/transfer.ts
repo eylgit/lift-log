@@ -511,6 +511,10 @@ function readSettings(value: unknown): Settings {
     // fresh install has — and `needsOnboarding` will not act on it alone,
     // because the restored log is the better answer to "has this been set up".
     onboardedAt: readOptionalString(row, "onboardedAt", "settings"),
+    // Added in G2, on the same terms. It rides in the export deliberately: a
+    // backup taken of the sample log restores as the sample log, banner and
+    // all, rather than quietly becoming somebody's real training history.
+    sampleDataAt: readOptionalString(row, "sampleDataAt", "settings"),
     schemaVersion: readCount(row, "schemaVersion", "settings"),
   };
 }

@@ -849,11 +849,69 @@ weights were all 1 kg, so without the replay the first card would prescribe 1 kg
 the athlete answered — a wrong number on the first screen a stranger ever sees.*
 
 ## G2 — Sample data
+*The generator is `src/sample.ts`, and it is **the same virtual lifter B7.3 already had**. That
+fixture lived in `tests/simulation/lifter.ts` and ran the real engine over a year to draw the
+sawtooth in the README; G2 needs the same thing at fourteen weeks. Two runs of one model, not two
+models — so the model moved into `src/` and the fixture became a call into it with the year's
+parameters. The refactor is provably behaviour-preserving: the committed `output/simulation.svg`
+and `output/simulation.json` come out byte-identical.*
+
+*One thing had to change to generalise it. The long-term gain was written as `SLOW_GAIN_KG_PER_YEAR
+* (day / YEAR_DAYS)` — the same arithmetic when the run is a year and badly wrong when it is
+fourteen weeks. It is prorated against 365 now, so a quarter's run gains a quarter's worth. A
+sample athlete who put fifteen kilos on every lift in fourteen weeks would be a fantasy.*
+
 - **G2.1** A "try it with sample data" switch that seeds ~14 weeks of plausible history, including
-  two deload cycles.
+  two deload cycles. *(Done. Ninety-one sessions over ninety-eight days — one lift a day, a week
+  off in the middle so the calendar has a hole, one session walked out of — and **two or three
+  deloads on every one of the five lifts**, not two overall. Every lift finishes heavier than it
+  started.*
+
+  *The dial that buys that is headroom. The year-long fixture starts its athlete 2 kg below
+  capacity, which is how a start weight should be chosen and gives a long clean climb; the sample
+  athlete starts at the edge of theirs, because with headroom the first stall is two months away
+  and fourteen weeks of sample data would be a diagonal line. It is the one place the sample
+  deliberately models a worse athlete than the method would produce, and it is what makes the
+  screens show the method.*
+
+  *It replaces the whole database rather than appending sessions. The sample athlete has real
+  start weights, a 2.5 kg step and a right-side-weak deadlift; a log of 30 kg split squats replayed
+  against a rotation that starts at 1 kg is not a lighter version of the same thing, it is
+  nonsense. And it lands on **Today**, not the calendar — the card, prescribing a real weight with
+  "same again — last time was short" under it, is the thing worth showing.)*
 - **G2.2** A clearly visible banner while sample mode is on, and one tap to wipe it and start real.
+  *(Done, and the banner has no dismiss. The one genuinely bad outcome of sample data is somebody
+  logging a real session into it and finding out later that their training is mixed in with
+  somebody else's — a banner that can be dismissed is one that will be, and the fact it states
+  stays true afterwards. It is drawn in `--warn` rather than the accent because it is a caveat
+  about everything under it, not an announcement about the app.*
+
+  *"Start real" confirms first. This is the only unrecoverable operation in the app that is not a
+  session delete — it discards the whole database — and it sits behind a banner that is on screen
+  constantly, which is precisely the button somebody eventually presses by accident. What comes
+  back is onboarding, because the wipe clears `onboardedAt` with everything else: "start real"
+  means getting the app a stranger gets, and the answers being thrown away belonged to somebody
+  fictional.)*
 - **G2.3** Cheap to build and the single highest-value item for the portfolio half — without it, a
-  first-time visitor lands on empty charts and a form.
+  first-time visitor lands on empty charts and a form. *(Agreed, and it was not quite cheap: the
+  shared-generator refactor was most of the work. The switch is on the first setup screen and
+  nowhere else — somebody who has answered two questions is setting the app up, and offering to
+  throw that away is noise.)*
+
+*Two things G2 needed that were not in the plan.*
+
+*`sampleDataAt` in settings, which **silences the backup nudge**. Ninety-one sessions and no backup
+trips F3.2's rule several times over, so without this a visitor's second screen would be the app
+insisting they save a file of a fictional athlete's training. There is a test that asserts the
+nudge *would* fire, which is the honest way to record why the suppression exists. The field rides
+in the export deliberately: a backup of the sample log restores as the sample log, banner and all,
+rather than quietly becoming somebody's real history.*
+
+*And `src/db/seed.ts` — `replaceAll` and `resetToDefaults`. They are in `src/db/` and not beside
+the generator because they need `DEFAULT_ROTATION` and `DEFAULT_SETTINGS`, which live in
+`schema.ts`, which imports Dexie (C2.3). The generator knows nothing about storage and must keep
+knowing nothing. Both end with `rebuildState`, for the reason `restore` states about itself: it
+clears the cache and does not refill it, so whoever replaces the log owns rebuilding from it.*
 
 ## G3 — Settings
 - **G3.1** Step size, rest length, units display, export/import, about, reset.
@@ -863,7 +921,14 @@ the athlete answered — a wrong number on the first screen a stranger ever sees
 
 ### Exit criteria — Part G
 - [ ] A fresh install reaches the first session in under two minutes.
-- [ ] Sample mode is one tap from the landing state, and one tap to leave.
+- [x] Sample mode is one tap from the landing state, and one tap to leave. *One tap in — the
+      switch is on the landing screen, which is the first setup question. **Two taps out**, and
+      deliberately: "Start real" raises a confirm before it wipes the database. The criterion said
+      one and it is worth saying why it is not. Everything else destructive in the app is a
+      single session that can be seen on screen before it goes; this discards the whole database
+      from a button that is on screen constantly, and an accidental tap would drop a visitor
+      back into setup with no way back. Driven end to end in a browser: seed, read the card, open
+      the calendar, reload without the nudge appearing, cancel the confirm, then take it.*
 
 ---
 

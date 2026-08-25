@@ -658,3 +658,29 @@ button.quiet {
   color: var(--ink-2);
   font-weight: 600;
 }
+
+/* ------------------------------------------------------ sample data (G2) */
+
+/* The banner that says whose log this is. `--warn` rather than the accent,
+   because it is not an announcement about the app — it is a caveat about
+   everything under it, and it wants a different voice from "a new version is
+   ready" (G2.2). Not dismissible: the fact stays true. */
+.banner.sample {
+  background: var(--surf);
+  color: var(--ink-2);
+  border-left: 3px solid var(--warn);
+}
+.banner.sample strong { color: var(--ink); font-weight: 600; }
+
+/* The confirm stacks, because two buttons and a sentence do not fit a row at
+   390px and this is the one banner nobody should skim. */
+.banner.sample.asking { flex-direction: column; align-items: stretch; gap: 10px; }
+.sample-ask { margin: 0; }
+.sample-buttons { display: flex; align-items: center; gap: 10px; }
+.sample-buttons .quiet { padding: 8px 0; }
+.sample-buttons .sample-go {
+  margin-left: auto;
+  background: var(--warn);
+  color: var(--on-accent);
+  border-color: var(--warn);
+}

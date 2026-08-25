@@ -89,6 +89,7 @@ describe("the setup", () => {
       lastExportedAt: DEFAULT_SETTINGS.lastExportedAt,
       lastNudgedAt: DEFAULT_SETTINGS.lastNudgedAt,
       onboardedAt: DEFAULT_SETTINGS.onboardedAt,
+      sampleDataAt: DEFAULT_SETTINGS.sampleDataAt,
       schemaVersion: DEFAULT_SETTINGS.schemaVersion,
     });
     await expect(repo.getEquipment()).resolves.toEqual({ stepKg: DEFAULT_EQUIPMENT.stepKg });
