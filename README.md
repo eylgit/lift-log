@@ -21,25 +21,26 @@ can read.
 ## Status
 
 **Live at <https://lift-log.greensun.workers.dev/>** — installable to a home screen and
-works offline. There is no progression engine and no session runner yet: the Today screen renders
-a fixed rotation.
+works offline. The engine, the session runner, history, progress charts, backup and restore,
+onboarding and sample mode are all in. A fresh install reaches its first set in about thirty
+seconds, and sample mode shows fourteen weeks of a virtual lifter's training without asking for
+an account. 678 tests.
 
-Work is staged in ten parts. Each is self-contained and ends with a checklist to review before the
-next one starts. The full plan, with numbered steps, is
+Work is staged in eight parts, A to H. Each is self-contained and ends with a checklist to review
+before the next one starts. The full plan, with numbered steps, is
 **[`docs/lift-log-build-plan.md`](docs/lift-log-build-plan.md)**.
 
 | | Part | State |
 | --- | --- | --- |
 | **A** | Repository and deployment | done |
-| **B** | Progression engine — pure TypeScript, no UI | in progress |
-| **C** | Persistence — IndexedDB, replay, export/import | |
-| **D** | Session runner — *usable from here* | |
-| **E** | History and progress | |
-| **F** | Durability — persist, install nudge, backup nudge | |
-| **G** | Onboarding and sample data | |
-| **H** | Ship v1.0 | |
-| **I** | Sync backup | optional |
-| **J** | Native apps via Capacitor | optional |
+| **B** | Progression engine — pure TypeScript, no UI | done |
+| **C** | Persistence — IndexedDB, replay, export/import | done |
+| **D** | Session runner — *usable from here* | done |
+| **E** | History and progress | done |
+| **F** | Durability — persist, install nudge, backup nudge | done |
+| **G** | Onboarding and sample data | done |
+| **H** | Ship v1.0 | in progress |
+| **K** | Later, nice-to-have | open list |
 
 The plan opens with **ten invariants** (INV-1 to INV-10) — decisions that are cheap to honour and
 expensive to reverse. Read those before changing anything. The reasoning behind them is in
@@ -56,10 +57,10 @@ npm run build      # typecheck + production build into dist/
 npm run preview    # serve the built app, service worker and all
 ```
 
-> **If `npm install` fails with an `EPERM`/symlink error**, you are almost certainly working
-> inside a VirtualBox shared folder, which cannot create the symlinks npm puts in
-> `node_modules/.bin`. Clone the repo onto the VM's own filesystem (`~/lift-log`) and work there,
-> or run `npm install --no-bin-links` and invoke tools directly
+> **If `npm install` fails with an `EPERM`/symlink error**, the filesystem you are working on
+> cannot create the symlinks npm puts in `node_modules/.bin` — network shares and mounted folders
+> often can't. Clone the repository onto a local disk and work there, or run
+> `npm install --no-bin-links` and invoke tools directly
 > (`node node_modules/vite/bin/vite.js build`).
 
 ## Deploying
@@ -94,8 +95,11 @@ to install.
 
 ```
 src/
-  plan.ts          the five-day rotation, the scheme, and the training-day rule
-  App.tsx          the Today screen
+  engine/          the progression engine — pure TypeScript, no browser APIs, no I/O
+  db/              IndexedDB via Dexie: schema, repository, replay, export and import
+  screens/         one file per screen
+  components/      Stepper and TapValue, the two shared controls
+  App.tsx          the shell — which screen is showing, the chrome around it
   styles.css       the Blueprint palette — one theme, deliberately
 public/            icons and the manifest's static assets
 docs/

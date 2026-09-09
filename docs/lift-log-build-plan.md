@@ -26,14 +26,14 @@ Do not redo this work.
 | Existing source | `src/plan.ts` (rotation, scheme, training-day rule), `src/App.tsx` (Today screen shell), `src/styles.css` (Blueprint palette), `public/` (PWA icons) |
 | CI | `.github/workflows/ci.yml` — typecheck + build on push and PR, Node 20 |
 | Deploy | `wrangler.jsonc` — assets-only Cloudflare Worker serving `dist/` from the root path |
-| Tooling | `gh` CLI installed at `/usr/local/bin/gh`, authenticated. Node 20 at `/opt/node20/bin` |
+| Tooling | `gh` CLI installed and authenticated. Node 20 or newer on `PATH` |
 
 ### Two environment facts that will waste an afternoon if unknown
 
 - **Node 20 or newer is required.** Node 18 has no global `crypto`, which the PWA build needs.
-- **`npm install` fails inside the VirtualBox shared folder** with an `EPERM` symlink error, because
-  the share cannot create the symlinks npm puts in `node_modules/.bin`. Clone the repo onto the
-  VM's own filesystem (e.g. `~/lift-log`) and develop there. Use the share for syncing only.
+- **`npm install` fails with an `EPERM` symlink error** on any filesystem that cannot create the
+  symlinks npm puts in `node_modules/.bin` — network shares and mounted folders are the usual
+  culprits. Clone onto a local disk and develop there.
 
 ### Visibility
 
